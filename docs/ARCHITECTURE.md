@@ -23,7 +23,8 @@ Input      Keyboard + mouse (down / pressed this tick), wheel, quit (close box).
            `mouse_delta()` is zero until the first real sample, on focus gain,
            and while unfocused. Mouse/wheel deltas are clamped (no warp jumps).
            Focus loss releases held keys and buttons (`window_focused()`).
-           Focus gain re-reads OS key/button state so held WASD still pans.
+           Focus gain re-reads OS key/button state so held WASD still pans
+           without synthesizing key_pressed (Escape / F1 / Space).
 Time       Fixed timestep: `Time::tick_hz == 60`, `delta_seconds() == 1/60`
            (use this for motion). `elapsed_seconds()` is wall-clock.
            `frame_seconds()` / `frames_per_second()` are the last tick's wall
@@ -32,15 +33,17 @@ Renderer   Clear, fill rect, textured quad, present. Applies an orthographic cam
            `logical_width` / `logical_height` are the letterboxed present size.
            `fill_screen_rect` / `draw_debug_text` are HUD space (ignore camera).
            The sandbox HUD is optional (F1 / backtick); `--smoke` skips it.
+           Debug text is best-effort (dummy drivers cannot abort the demo).
 Texture    GPU image from RGBA8 pixels (`create_texture`) or a BMP (`load_bmp`).
            Nearest-neighbor sampling; destroy before the Renderer.
+           A texture that outlives the renderer skips SDL_DestroyTexture.
 Camera     2D ortho view: `position` is the world point at the viewport center.
            Uniform zoom, aspect-correct visible rect, clamped to [0.25, 8].
 Entity     Lightweight transform + size + optional texture. Not an ECS.
            `Transform::then` composes a child without parent pointers.
 ```
 
-`Types.hpp` defines `Color`, `Vec2`, and `Rect`. `Color::lerp` mixes two 0–1 colors (`t` clamped to `[0, 1]`). `Rect::overlaps` / `Rect::contains` are half-open 2D AABB helpers (shared edges do not overlap). `midas.hpp` is an umbrella include.
+`Types.hpp` defines `Color`, `Vec2`, and `Rect`. `Color::lerp` mixes two 0–1 colors (`t` clamped to `[0, 1]`). `Vec2::length_squared` is `x*x+y*y` for comparisons without `hypot` (`length()`). `Rect::overlaps` / `Rect::contains` are half-open 2D AABB helpers (shared edges do not overlap). `midas.hpp` is an umbrella include.
 
 Games talk only to `Engine` and the types it returns:
 
@@ -70,6 +73,17 @@ engine.run([&](midas::Engine& e) {
 
 `EngineConfig::max_ticks` stops the loop after N ticks (used by `--smoke` / `MIDAS_SMOKE_FRAMES`). Closing the window sets `Input::quit_requested()` and ends the loop.
 
+## Shutdown
+
+C++ destroys members in reverse declaration order. `Engine::Impl` is declared `SDL → Window → Renderer`, so teardown is:
+
+1. Game `Texture`s — the sandbox declares the BMP *after* `Engine`, so it dies first (the SDL order to learn).
+2. `Renderer` — sets a shared `GpuLifetime` flag, then `SDL_DestroyRenderer` (SDL also frees leftover GPU textures).
+3. `Window` — `SDL_DestroyWindow`.
+4. `SDL_Quit`.
+
+If step 1 is skipped, step 2 still tears the GPU down safely: a late `Texture` destructor sees `!alive` and does not call `SDL_DestroyTexture` on a freed handle. `Renderer::Impl` / `Window::Impl` own the native pointers so a constructor that throws after `SDL_CreateRenderer` / `SDL_CreateWindow` still destroys them.
+
 Destroy a `Texture` before the `Renderer` / `Engine` that created it. `Texture` is move-only; move-assignment releases the previous GPU texture (RAII in `Texture::Impl`).
 
 ## Frame loop
@@ -93,7 +107,7 @@ The renderer uses SDL3 logical presentation (`SDL_LOGICAL_PRESENTATION_LETTERBOX
 - **Mismatched aspect (resized window, odd display):** black bars pad the extra drawable region. The logical 1280×720 rectangle is undistorted in the middle.
 - **Mouse:** `Engine` converts window pixels → logical coordinates (`SDL_ConvertEventToRenderCoordinates` / `SDL_RenderCoordinatesFromWindow`). Pointers in the bars fall outside `0 .. logical_width/height`.
 - **Camera:** always pass `Renderer::logical_width/height` as the viewport, never raw drawable pixels. World fills and textures share `Camera::project`, so a gold square and a gold-tinted sprite of the same world rect stay aligned at any zoom. Tint is a per-texel multiply, not a function of dest size.
-- **HUD:** `fill_screen_rect` and `draw_debug_text` skip the camera so an overlay does not pan or zoom with the world. The sandbox draws FPS, camera position, and zoom this way; **F1** or **`** toggles it. `--smoke` leaves it off so CI does not depend on debug text.
+- **HUD:** `fill_screen_rect` and `draw_debug_text` skip the camera so an overlay does not pan or zoom with the world. The sandbox draws FPS, camera position, zoom, and a one-line WASD/zoom/F1 legend this way; **F1** or **`** toggles it. `--smoke` leaves it off so CI does not depend on debug text. Debug text failure is ignored (dummy drivers).
 
 ## Camera
 
@@ -103,7 +117,7 @@ Visible world size is `(logical_w / zoom)` by `(logical_h / zoom)`, so the view 
 
 The renderer starts with `zoom == 1` and `position` at the viewport center, so world units match logical pixels until the game moves the camera. `fill_rect` and `draw_texture` take world rectangles; `Camera::project` maps them to the screen. `Camera::zoom_toward` scales around a screen point (mouse-wheel zoom) and ignores non-positive multipliers. Projection uses `clamped_zoom()` so a zero/NaN zoom cannot divide by zero.
 
-The sandbox pans with WASD / arrows (or right-mouse drag) at constant **screen-space** speed (`pan / zoom`) and zooms with Q/E or the wheel. Space resets the view. Held WASD and the right mouse button are released if the window loses focus, so the camera cannot keep sliding while you are in another app. Coming back into focus re-reads the OS keyboard and mouse buttons, so a still-held W resumes pan without needing a new key-down. Mouse-wheel and right-drag deltas are clamped so a cursor warp or a wild trackpad burst cannot jump the view. A HUD in the top-left shows the fixed `dt`, wall-clock FPS, camera position, and zoom (toggle with F1 or backtick).
+The sandbox pans with WASD / arrows (or right-mouse drag) at constant **screen-space** speed (`pan / zoom`) and zooms with Q/E or the wheel. Space resets the view. Held WASD and the right mouse button are released if the window loses focus, so the camera cannot keep sliding while you are in another app. Coming back into focus re-reads the OS keyboard and mouse buttons, so a still-held W resumes pan without needing a new key-down — and without synthesizing a `key_pressed` edge (Escape would quit, F1 would toggle the HUD). Mouse-wheel and right-drag deltas are clamped so a cursor warp or a wild trackpad burst cannot jump the view. A HUD in the top-left shows the fixed `dt`, wall-clock FPS, camera, and a one-line control legend (toggle with F1 or backtick).
 
 ## Textures
 

@@ -241,6 +241,10 @@ void Input::handle_native_event(const void* native_event) noexcept {
             // Pass-2 released keys on focus loss, so a held WASD would stay
             // dead until a new KEY_DOWN. Re-read the OS so pan resumes.
             sync_held_from_device();
+            // Same-frame `key_pressed` uses `down && !previous`. Copy the
+            // restored holds into previous so Escape/F1/Space do not fire.
+            impl_->previous = impl_->down;
+            impl_->mouse_previous = impl_->mouse_down;
             break;
         case SDL_EVENT_WINDOW_MOUSE_LEAVE: {
             bool held = false;

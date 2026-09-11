@@ -45,14 +45,21 @@ int parse_smoke_ticks(int argc, char** argv) {
 }
 
 /// Header-only math: camera invertibility, zoom clamps, AABB edges,
-/// Transform::then identity/associativity, Color::lerp. Runs before SDL so a
-/// broken Camera/Rect cannot hide behind a missing GPU.
+/// Transform::then identity/associativity, Color::lerp, Vec2::length_squared.
+/// Runs before SDL so a broken Camera/Rect cannot hide behind a missing GPU.
 void self_check_math() {
     using midas::Camera;
     using midas::Entity;
     using midas::Rect;
     using midas::Transform;
     using midas::Vec2;
+
+    const Vec2 three_four{3.0f, 4.0f};
+    if (std::abs(three_four.length_squared() - 25.0f) > 0.001f ||
+        std::abs(three_four.length() - 5.0f) > 0.001f ||
+        Vec2{}.length_squared() != 0.0f) {
+        throw std::runtime_error("Midas self-check: Vec2::length_squared failed");
+    }
 
     Camera camera;
     camera.position = {kViewportW * 0.5f, kViewportH * 0.5f};
@@ -437,7 +444,8 @@ void apply_camera_controls(midas::Engine& engine, midas::Camera& camera, const m
 /// Screen-space HUD: stays put while the world pans/zooms. Uses fixed-timestep
 /// `delta_seconds()` for the label and wall-clock `frames_per_second()` for pacing.
 /// Hidden during `--smoke` (math self-check does not need debug text) and when
-/// the player toggles it off with F1 or backtick.
+/// the player toggles it off with F1 or backtick. Line 3 is a one-line control
+/// legend (WASD, zoom, F1) so the README table is also on screen.
 void draw_debug_overlay(midas::Engine& engine, const midas::Camera& camera) {
     auto& renderer = engine.renderer();
     const auto& time = engine.time();
@@ -465,7 +473,8 @@ void draw_debug_overlay(midas::Engine& engine, const midas::Camera& camera) {
 
     renderer.draw_debug_text({x, y}, line1.str(), midas::Color::gold());
     renderer.draw_debug_text({x, y + line_h}, line2.str(), midas::Color::white());
-    renderer.draw_debug_text({x, y + line_h * 2.0f}, "F1 or ` hides this HUD", midas::Color::bronze());
+    renderer.draw_debug_text({x, y + line_h * 2.0f}, "WASD pan  Q/E or wheel zoom  F1/` HUD",
+                             midas::Color::bronze());
 }
 
 }  // namespace
@@ -482,6 +491,8 @@ int main(int argc, char** argv) {
         config.height = 720;
         config.max_ticks = smoke_ticks;
 
+        // Engine first, then GPU textures: C++ destroys in reverse, which is
+        // the SDL order (texture → renderer → window → SDL_Quit).
         midas::Engine engine{std::move(config)};
 
         LoadedSprite sprite = load_sprite(engine, argc > 0 ? argv[0] : nullptr, smoke_ticks > 0);
@@ -497,8 +508,8 @@ int main(int argc, char** argv) {
         const midas::Camera home = engine.renderer().camera();
         midas::Camera camera = home;
 
-        // Interactive demos show the HUD; --smoke asserts math/BMP and skips
-        // debug text so a dummy driver cannot fail the overlay path.
+        // Interactive demos show the HUD (dt/fps/camera plus a one-line
+        // WASD/zoom/F1 legend); --smoke asserts math/BMP and never draws it.
         bool show_hud = smoke_ticks == 0;
         if (show_hud) {
             std::cerr << "Midas: F1 or ` toggles the debug HUD\n";
@@ -509,8 +520,9 @@ int main(int argc, char** argv) {
                 engine.request_quit();
                 return;
             }
-            if (engine.input().key_pressed(midas::Key::F1) ||
-                engine.input().key_pressed(midas::Key::Grave)) {
+            // Smoke never enables the overlay (dummy video, no debug text).
+            if (smoke_ticks == 0 && (engine.input().key_pressed(midas::Key::F1) ||
+                                     engine.input().key_pressed(midas::Key::Grave))) {
                 show_hud = !show_hud;
             }
 

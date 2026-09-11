@@ -44,6 +44,7 @@ public:
 
     /// 8×8 debug bitmap text in logical present pixels (ignores the camera).
     /// Wraps `SDL_RenderDebugText` — a teaching HUD, not a game font atlas.
+    /// Failure is ignored so a dummy/headless driver cannot abort the demo.
     void draw_debug_text(Vec2 position, std::string_view text,
                          const Color& color = Color::white());
 

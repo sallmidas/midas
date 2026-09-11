@@ -75,6 +75,12 @@ struct Vec2 {
         return {x * other.x, y * other.y};
     }
 
+    /// `x*x + y*y`. Use for length comparisons so you do not need `hypot`.
+    /// `length()` stays the accurate magnitude (NaN-safe via `std::hypot`).
+    [[nodiscard]] constexpr float length_squared() const noexcept {
+        return x * x + y * y;
+    }
+
     [[nodiscard]] float length() const noexcept {
         return std::hypot(x, y);
     }

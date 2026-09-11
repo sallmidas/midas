@@ -15,10 +15,11 @@ class Renderer;
 /// Sampling is nearest-neighbor (`SDL_SCALEMODE_NEAREST`) so pixel-art sprites
 /// stay sharp when the camera zooms. Linear filtering is a later, opt-in layer.
 ///
-/// **Lifetime:** destroy the texture before the `Renderer` that created it.
-/// SDL destroys leftover GPU textures with the renderer; a `Texture` destructor
-/// running after that would be a use-after-free. Move-assignment is RAII-safe
-/// (the old GPU texture is released).
+/// **Lifetime:** destroy the texture before the `Renderer` that created it
+/// (declare `Engine` first, then the `Texture`, so the texture dies first).
+/// SDL frees leftover GPU textures with the renderer. A `Texture` destructor
+/// after that skips `SDL_DestroyTexture` so reversed teardown cannot UAF.
+/// Move-assignment is RAII-safe (the old GPU texture is released).
 class Texture {
 public:
     Texture(const Texture&) = delete;
@@ -34,7 +35,7 @@ public:
 private:
     friend class Renderer;
 
-    Texture(void* native_texture, int width, int height);
+    Texture(void* native_texture, int width, int height, std::shared_ptr<void> gpu_lifetime);
 
     [[nodiscard]] void* native_texture() const noexcept;
 

@@ -1,6 +1,7 @@
 #include <midas/Renderer.hpp>
 #include <midas/Window.hpp>
 
+#include "internal/GpuLifetime.hpp"
 #include "internal/RendererNative.hpp"
 #include "internal/Sdl.hpp"
 #include "internal/WindowNative.hpp"
@@ -9,6 +10,7 @@
 #include <cmath>
 #include <cstddef>
 #include <filesystem>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <system_error>
@@ -52,6 +54,17 @@ struct Renderer::Impl {
     Camera camera{};
     int logical_width{0};
     int logical_height{0};
+    std::shared_ptr<detail::GpuLifetime> gpu{std::make_shared<detail::GpuLifetime>()};
+
+    // RAII: constructor failures after SDL_CreateRenderer take this path too
+    // (C++ does not run ~Renderer() when the constructor throws).
+    ~Impl() {
+        gpu->alive = false;
+        if (native.renderer != nullptr) {
+            SDL_DestroyRenderer(native.renderer);
+            native.renderer = nullptr;
+        }
+    }
 };
 
 Renderer::Renderer(Window& window) : impl_(std::make_unique<Impl>()) {
@@ -85,12 +98,7 @@ Renderer::Renderer(Window& window) : impl_(std::make_unique<Impl>()) {
     (void)SDL_SetRenderVSync(impl_->native.renderer, 1);
 }
 
-Renderer::~Renderer() {
-    if (impl_ && impl_->native.renderer != nullptr) {
-        SDL_DestroyRenderer(impl_->native.renderer);
-        impl_->native.renderer = nullptr;
-    }
-}
+Renderer::~Renderer() = default;
 
 Renderer::Native* Renderer::native() noexcept {
     return impl_ ? &impl_->native : nullptr;
@@ -146,13 +154,17 @@ void Renderer::draw_texture(const Texture& texture, const Rect& dest, const Colo
     }
 
     const SDL_FRect native_rect{screen.x, screen.y, screen.w, screen.h};
-    if (!SDL_RenderTexture(impl_->native.renderer, native_texture, nullptr, &native_rect)) {
-        detail::throw_sdl("SDL_RenderTexture failed");
-    }
+    const bool drawn =
+        SDL_RenderTexture(impl_->native.renderer, native_texture, nullptr, &native_rect);
 
-    // Restore identity so a later draw of this texture cannot inherit the tint.
+    // Restore identity so a later draw of this texture cannot inherit the tint
+    // (including the throw path below).
     (void)SDL_SetTextureColorModFloat(native_texture, 1.0f, 1.0f, 1.0f);
     (void)SDL_SetTextureAlphaModFloat(native_texture, 1.0f);
+
+    if (!drawn) {
+        detail::throw_sdl("SDL_RenderTexture failed");
+    }
 }
 
 void Renderer::fill_screen_rect(const Rect& rect, const Color& color) {
@@ -172,9 +184,7 @@ void Renderer::draw_debug_text(Vec2 position, std::string_view text, const Color
     }
     set_draw_color(impl_->native.renderer, color);
     const std::string owned{text};
-    if (!SDL_RenderDebugText(impl_->native.renderer, position.x, position.y, owned.c_str())) {
-        detail::throw_sdl("SDL_RenderDebugText failed");
-    }
+    (void)SDL_RenderDebugText(impl_->native.renderer, position.x, position.y, owned.c_str());
 }
 
 void Renderer::present() {
@@ -211,7 +221,7 @@ Texture Renderer::create_texture(int width, int height, std::span<const std::uin
         detail::throw_sdl("SDL_UpdateTexture failed");
     }
 
-    return Texture{native, width, height};
+    return Texture{native, width, height, impl_->gpu};
 }
 
 Texture Renderer::load_bmp(std::string_view path) {
@@ -249,7 +259,7 @@ Texture Renderer::load_bmp(std::string_view path) {
         detail::throw_sdl("SDL_CreateTextureFromSurface failed (" + path_str + ")");
     }
 
-    return Texture{native, width, height};
+    return Texture{native, width, height, impl_->gpu};
 }
 
 void Renderer::set_camera(const Camera& camera) noexcept {

@@ -25,6 +25,11 @@ struct EngineConfig {
 /// Copies/moves are deleted because the SDL video subsystem and native window are
 /// unique. Pass a tick callback to `run()`; call `request_quit()` (or press Esc
 /// in the sandbox) to stop.
+///
+/// **Shutdown** (C++ destroys members in reverse declaration order):
+/// `Renderer` then `Window` then `SDL_Quit`. Destroy game `Texture`s before
+/// this `Engine`. If a texture outlives the renderer, its destructor is a
+/// no-op on the GPU handle (the renderer shares a small alive-flag).
 class Engine {
 public:
     explicit Engine(EngineConfig config = {});
