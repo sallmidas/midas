@@ -1,6 +1,7 @@
 #include <midas/midas.hpp>
 
 #include <cmath>
+#include <cstddef>
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
@@ -43,8 +44,9 @@ int parse_smoke_ticks(int argc, char** argv) {
     return 0;
 }
 
-/// Header-only math: camera invertibility, zoom clamps, AABB, transform compose.
-/// Runs before SDL so a broken Camera/Rect cannot hide behind a missing GPU.
+/// Header-only math: camera invertibility, zoom clamps, AABB edges,
+/// Transform::then identity/associativity, Color::lerp. Runs before SDL so a
+/// broken Camera/Rect cannot hide behind a missing GPU.
 void self_check_math() {
     using midas::Camera;
     using midas::Entity;
@@ -142,6 +144,21 @@ void self_check_math() {
         throw std::runtime_error("Midas self-check: AABB overlaps/contains failed");
     }
 
+    // Half-open AABB: share an edge or a corner → no overlap. Zero-size is empty.
+    const Rect right_touch{10.0f, 0.0f, 10.0f, 10.0f};
+    const Rect below_touch{0.0f, 10.0f, 10.0f, 10.0f};
+    const Rect inside{2.0f, 2.0f, 3.0f, 3.0f};
+    const Rect empty{0.0f, 0.0f, 0.0f, 0.0f};
+    if (a.overlaps(right_touch) || a.overlaps(below_touch) || right_touch.overlaps(a) ||
+        a.overlaps(empty) || empty.overlaps(a) || empty.overlaps(empty) || !a.overlaps(a) ||
+        !a.overlaps(inside) || !inside.overlaps(a)) {
+        throw std::runtime_error("Midas self-check: AABB edge/containment/empty overlap failed");
+    }
+    if (!a.contains({0.0f, 0.0f}) || !a.contains({9.99f, 9.99f}) || a.contains({-0.01f, 0.0f}) ||
+        empty.contains({0.0f, 0.0f})) {
+        throw std::runtime_error("Midas self-check: AABB contains half-open edges failed");
+    }
+
     const Transform parent{{100.0f, 50.0f}, {2.0f, 3.0f}};
     const Transform local{{10.0f, 4.0f}, {0.5f, 0.5f}};
     const Transform world_tf = parent.then(local);
@@ -150,14 +167,72 @@ void self_check_math() {
         throw std::runtime_error("Midas self-check: Transform::then compose failed");
     }
 
+    const Transform identity{};
+    const Transform id_then_local = identity.then(local);
+    const Transform parent_then_id = parent.then(identity);
+    if (std::abs(id_then_local.position.x - local.position.x) > 0.01f ||
+        std::abs(id_then_local.position.y - local.position.y) > 0.01f ||
+        std::abs(id_then_local.scale.x - local.scale.x) > 0.01f ||
+        std::abs(id_then_local.scale.y - local.scale.y) > 0.01f ||
+        std::abs(parent_then_id.position.x - parent.position.x) > 0.01f ||
+        std::abs(parent_then_id.position.y - parent.position.y) > 0.01f ||
+        std::abs(parent_then_id.scale.x - parent.scale.x) > 0.01f ||
+        std::abs(parent_then_id.scale.y - parent.scale.y) > 0.01f) {
+        throw std::runtime_error("Midas self-check: Transform::then identity failed");
+    }
+
+    const Transform grandchild{{2.0f, 1.0f}, {4.0f, 0.5f}};
+    const Transform assoc_left = parent.then(local.then(grandchild));
+    const Transform assoc_right = parent.then(local).then(grandchild);
+    if (std::abs(assoc_left.position.x - assoc_right.position.x) > 0.01f ||
+        std::abs(assoc_left.position.y - assoc_right.position.y) > 0.01f ||
+        std::abs(assoc_left.scale.x - assoc_right.scale.x) > 0.01f ||
+        std::abs(assoc_left.scale.y - assoc_right.scale.y) > 0.01f) {
+        throw std::runtime_error("Midas self-check: Transform::then should be associative");
+    }
+
+    const Vec2 local_pt{3.0f, 5.0f};
+    const Vec2 nested = parent.apply(local.apply(local_pt));
+    const Vec2 composed = parent.then(local).apply(local_pt);
+    if (std::abs(nested.x - composed.x) > 0.01f || std::abs(nested.y - composed.y) > 0.01f) {
+        throw std::runtime_error("Midas self-check: Transform::then should match nested apply");
+    }
+
+    const Transform flipped{{10.0f, 20.0f}, {-1.0f, 1.0f}};
+    const Rect flipped_bounds = flipped.to_rect({8.0f, 8.0f});
+    if (flipped_bounds.w >= 0.0f) {
+        throw std::runtime_error("Midas self-check: negative scale should produce a non-positive AABB width");
+    }
+
     Entity left;
     left.transform.position = {0.0f, 0.0f};
     left.size = {8.0f, 8.0f};
     Entity right;
     right.transform.position = {7.0f, 0.0f};
     right.size = {8.0f, 8.0f};
-    if (!left.overlaps(right)) {
+    Entity far;
+    far.transform.position = {8.0f, 0.0f};
+    far.size = {8.0f, 8.0f};
+    if (!left.overlaps(right) || left.overlaps(far)) {
         throw std::runtime_error("Midas self-check: entity AABB overlap failed");
+    }
+
+    using midas::Color;
+    const Color gold = Color::gold();
+    const Color bronze = Color::bronze();
+    const Color mid = Color::lerp(gold, bronze, 0.5f);
+    const Color at0 = Color::lerp(gold, bronze, 0.0f);
+    const Color at1 = Color::lerp(gold, bronze, 1.0f);
+    const Color clamped_hi = Color::lerp(gold, bronze, 4.0f);
+    const Color clamped_lo = Color::lerp(gold, bronze, -2.0f);
+    const Color clamped_nan = Color::lerp(gold, bronze, std::numeric_limits<float>::quiet_NaN());
+    if (std::abs(at0.r - gold.r) > 0.001f || std::abs(at0.g - gold.g) > 0.001f ||
+        std::abs(at1.r - bronze.r) > 0.001f || std::abs(at1.b - bronze.b) > 0.001f ||
+        std::abs(clamped_hi.r - bronze.r) > 0.001f || std::abs(clamped_lo.r - gold.r) > 0.001f ||
+        std::abs(clamped_nan.r - gold.r) > 0.001f ||
+        std::abs(mid.r - (gold.r + bronze.r) * 0.5f) > 0.001f ||
+        std::abs(mid.a - 1.0f) > 0.001f) {
+        throw std::runtime_error("Midas self-check: Color::lerp failed");
     }
 }
 
@@ -170,7 +245,7 @@ void add_candidate(std::vector<std::filesystem::path>& candidates, std::filesyst
 
 std::optional<std::filesystem::path> find_asset(const std::filesystem::path& exe_dir,
                                                 const char* argv0,
-                                                std::string_view name) {
+                                                std::string_view name, bool next_to_binary_only) {
     std::vector<std::filesystem::path> candidates;
     add_candidate(candidates, exe_dir / "assets" / name);
 
@@ -178,15 +253,17 @@ std::optional<std::filesystem::path> find_asset(const std::filesystem::path& exe
         add_candidate(candidates, std::filesystem::path(argv0).parent_path() / "assets" / name);
     }
 
-    std::error_code ec;
-    const auto cwd = std::filesystem::current_path(ec);
-    if (!ec) {
-        add_candidate(candidates, cwd / "assets" / name);
-        add_candidate(candidates, cwd / "apps" / "sandbox" / "assets" / name);
+    if (!next_to_binary_only) {
+        std::error_code cwd_ec;
+        const auto cwd = std::filesystem::current_path(cwd_ec);
+        if (!cwd_ec) {
+            add_candidate(candidates, cwd / "assets" / name);
+            add_candidate(candidates, cwd / "apps" / "sandbox" / "assets" / name);
+        }
     }
 
     for (const auto& candidate : candidates) {
-        ec.clear();
+        std::error_code ec;
         if (std::filesystem::is_regular_file(candidate, ec)) {
             return std::filesystem::weakly_canonical(candidate, ec);
         }
@@ -200,13 +277,20 @@ struct LoadedSprite {
     std::filesystem::path path;
 };
 
-LoadedSprite load_sprite(midas::Engine& engine, const char* argv0) {
+LoadedSprite load_sprite(midas::Engine& engine, const char* argv0, bool smoke) {
     constexpr int kSize = 64;
     auto& renderer = engine.renderer();
 
-    if (const auto path = find_asset(engine.executable_directory(), argv0, "midas_sprite.bmp")) {
+    if (const auto path =
+            find_asset(engine.executable_directory(), argv0, "midas_sprite.bmp", smoke)) {
         midas::Texture texture = renderer.load_bmp(path->string());
         return LoadedSprite{std::move(texture), true, *path};
+    }
+
+    if (smoke) {
+        std::cerr << "Midas: --smoke requires assets/midas_sprite.bmp next to the binary\n"
+                  << "  looked in " << (engine.executable_directory() / "assets").string() << '\n';
+        throw std::runtime_error("smoke missing BMP (CMake should copy it next to midas_sandbox)");
     }
 
     std::cerr << "Midas: missing assets/midas_sprite.bmp\n"
@@ -238,8 +322,12 @@ midas::Entity make_sprite(midas::Vec2 position, midas::Vec2 size, const midas::T
     return entity;
 }
 
-std::vector<midas::Entity> build_demo_scene(const midas::Texture& sprite, float viewport_w,
-                                            float viewport_h) {
+struct DemoScene {
+    std::vector<midas::Entity> entities;
+    std::size_t plinth_index{0};
+};
+
+DemoScene build_demo_scene(const midas::Texture& sprite, float viewport_w, float viewport_h) {
     // World origin is the top-left of the default view. The camera starts at the
     // viewport center, so this layout is what you see before WASD/zoom.
     const midas::Vec2 center{viewport_w * 0.5f, viewport_h * 0.5f};
@@ -257,6 +345,8 @@ std::vector<midas::Entity> build_demo_scene(const midas::Texture& sprite, float 
     }
 
     // Solid gold plinth (no texture) vs the BMP sprite vs a gold-tinted copy.
+    // Color::lerp pulses this fill between gold and bronze (teaching mix).
+    const std::size_t plinth_index = scene.size();
     scene.push_back(make_fill({center.x - 280.0f, center.y - 80.0f}, {160.0f, 160.0f}, midas::Color::gold()));
     scene.push_back(make_sprite({center.x - sprite_px * 0.5f, center.y - 88.0f}, {sprite_px, sprite_px},
                                 sprite, midas::Color::white()));
@@ -279,7 +369,7 @@ std::vector<midas::Entity> build_demo_scene(const midas::Texture& sprite, float 
     scene.push_back(
         make_fill({viewport_w - 100.0f, viewport_h - 100.0f}, {36.0f, 36.0f}, midas::Color::bronze()));
 
-    return scene;
+    return DemoScene{std::move(scene), plinth_index};
 }
 
 void apply_camera_controls(midas::Engine& engine, midas::Camera& camera, const midas::Camera& home) {
@@ -346,6 +436,8 @@ void apply_camera_controls(midas::Engine& engine, midas::Camera& camera, const m
 
 /// Screen-space HUD: stays put while the world pans/zooms. Uses fixed-timestep
 /// `delta_seconds()` for the label and wall-clock `frames_per_second()` for pacing.
+/// Hidden during `--smoke` (math self-check does not need debug text) and when
+/// the player toggles it off with F1 or backtick.
 void draw_debug_overlay(midas::Engine& engine, const midas::Camera& camera) {
     auto& renderer = engine.renderer();
     const auto& time = engine.time();
@@ -354,7 +446,7 @@ void draw_debug_overlay(midas::Engine& engine, const midas::Camera& camera) {
     constexpr float y = 10.0f;
     constexpr float line_h = 12.0f;
     constexpr float banner_w = 560.0f;
-    constexpr float banner_h = 34.0f;
+    constexpr float banner_h = 46.0f;
     renderer.fill_screen_rect({x - 4.0f, y - 4.0f, banner_w, banner_h}, {0.0f, 0.0f, 0.0f, 0.55f});
 
     std::ostringstream line1;
@@ -373,6 +465,7 @@ void draw_debug_overlay(midas::Engine& engine, const midas::Camera& camera) {
 
     renderer.draw_debug_text({x, y}, line1.str(), midas::Color::gold());
     renderer.draw_debug_text({x, y + line_h}, line2.str(), midas::Color::white());
+    renderer.draw_debug_text({x, y + line_h * 2.0f}, "F1 or ` hides this HUD", midas::Color::bronze());
 }
 
 }  // namespace
@@ -391,11 +484,7 @@ int main(int argc, char** argv) {
 
         midas::Engine engine{std::move(config)};
 
-        LoadedSprite sprite = load_sprite(engine, argc > 0 ? argv[0] : nullptr);
-        if (smoke_ticks > 0 && !sprite.from_bmp) {
-            std::cerr << "Midas: --smoke requires assets/midas_sprite.bmp next to the binary\n";
-            return 1;
-        }
+        LoadedSprite sprite = load_sprite(engine, argc > 0 ? argv[0] : nullptr, smoke_ticks > 0);
         if (sprite.from_bmp) {
             std::cerr << "Midas: loaded BMP " << sprite.texture.width() << "x" << sprite.texture.height()
                       << " from " << sprite.path.string() << '\n';
@@ -403,31 +492,50 @@ int main(int argc, char** argv) {
 
         const float viewport_w = static_cast<float>(engine.renderer().logical_width());
         const float viewport_h = static_cast<float>(engine.renderer().logical_height());
-        const std::vector<midas::Entity> scene = build_demo_scene(sprite.texture, viewport_w, viewport_h);
+        DemoScene scene = build_demo_scene(sprite.texture, viewport_w, viewport_h);
 
         const midas::Camera home = engine.renderer().camera();
         midas::Camera camera = home;
+
+        // Interactive demos show the HUD; --smoke asserts math/BMP and skips
+        // debug text so a dummy driver cannot fail the overlay path.
+        bool show_hud = smoke_ticks == 0;
+        if (show_hud) {
+            std::cerr << "Midas: F1 or ` toggles the debug HUD\n";
+        }
 
         const int status = engine.run([&](midas::Engine& engine) {
             if (engine.input().key_pressed(midas::Key::Escape)) {
                 engine.request_quit();
                 return;
             }
+            if (engine.input().key_pressed(midas::Key::F1) ||
+                engine.input().key_pressed(midas::Key::Grave)) {
+                show_hud = !show_hud;
+            }
 
             apply_camera_controls(engine, camera, home);
             engine.renderer().set_camera(camera);
 
+            // Teaching Color::lerp: the solid plinth eases gold ↔ bronze.
+            const float pulse =
+                0.5f + 0.5f * std::sin(static_cast<float>(engine.time().elapsed_seconds()) * 1.2f);
+            scene.entities[scene.plinth_index].color =
+                midas::Color::lerp(midas::Color::gold(), midas::Color::bronze(), pulse);
+
             auto& renderer = engine.renderer();
             renderer.clear(midas::Color::charcoal());
-            for (const auto& entity : scene) {
+            for (const auto& entity : scene.entities) {
                 midas::draw_entity(renderer, entity);
             }
-            draw_debug_overlay(engine, camera);
+            if (show_hud) {
+                draw_debug_overlay(engine, camera);
+            }
             renderer.present();
         });
 
         if (smoke_ticks > 0) {
-            std::cerr << "Midas: smoke completed " << smoke_ticks << " ticks (" << scene.size()
+            std::cerr << "Midas: smoke completed " << smoke_ticks << " ticks (" << scene.entities.size()
                       << " entities, " << std::fixed << std::setprecision(0)
                       << engine.time().frames_per_second() << " fps, camera/AABB self-check ok)\n";
         }

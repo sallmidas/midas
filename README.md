@@ -1,6 +1,6 @@
 # Midas
 
-Midas is a C++20 game engine. The public API covers a window, input, a fixed 60 Hz loop, a 2D renderer with textures and an orthographic camera, and lightweight entity/transform helpers. The sandbox draws a small gold-and-bronze scene (solid fills, a BMP sprite, a tinted sprite, and a scaled child) that you can pan and zoom. A HUD shows FPS, camera position, and zoom.
+Midas is a C++20 game engine. The public API covers a window, input, a fixed 60 Hz loop, a 2D renderer with textures and an orthographic camera, and lightweight entity/transform helpers. The sandbox draws a small gold-and-bronze scene (solid fills, a BMP sprite, a tinted sprite, and a scaled child) that you can pan and zoom. Press **F1** or **`** to hide the debug HUD for recordings.
 
 ## Layout
 
@@ -48,6 +48,7 @@ If SDL3 is not installed, CMake fetches **SDL3 3.4.16** automatically (needs net
 | **Q** / **E** | Zoom out / in around the view center |
 | Mouse wheel | Zoom toward the cursor |
 | **Space** | Reset pan and zoom |
+| **F1** or **`** | Toggle the screen-space debug HUD (off during `--smoke`) |
 
 Zoom is uniform and clamped to **0.25–8**. The view is aspect-correct: the visible world matches the 1280×720 logical window.
 
@@ -58,6 +59,6 @@ SDL_VIDEODRIVER=dummy ./build/debug/bin/midas_sandbox --smoke
 # or: ctest --preset debug
 ```
 
-`--smoke` also runs camera/AABB self-checks and **requires** `assets/midas_sprite.bmp` next to the binary (CMake copies it there). A missing BMP is an error in smoke mode; in an interactive run it logs where it looked and falls back to a generated checkerboard.
+`--smoke` also runs camera/AABB/`Color::lerp` self-checks and **requires** `assets/midas_sprite.bmp` next to the binary (CMake copies it there; `cmake --install` places it beside the installed sandbox). A missing copy is an error in smoke mode even if a BMP exists in the source tree. In an interactive run a missing BMP logs where it looked and falls back to a generated checkerboard. The HUD is skipped in smoke so the dummy video driver does not need debug text.
 
 See [docs/BUILDING.md](docs/BUILDING.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

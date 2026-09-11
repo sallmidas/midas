@@ -23,6 +23,7 @@ Input      Keyboard + mouse (down / pressed this tick), wheel, quit (close box).
            `mouse_delta()` is zero until the first real sample, on focus gain,
            and while unfocused. Mouse/wheel deltas are clamped (no warp jumps).
            Focus loss releases held keys and buttons (`window_focused()`).
+           Focus gain re-reads OS key/button state so held WASD still pans.
 Time       Fixed timestep: `Time::tick_hz == 60`, `delta_seconds() == 1/60`
            (use this for motion). `elapsed_seconds()` is wall-clock.
            `frame_seconds()` / `frames_per_second()` are the last tick's wall
@@ -30,6 +31,7 @@ Time       Fixed timestep: `Time::tick_hz == 60`, `delta_seconds() == 1/60`
 Renderer   Clear, fill rect, textured quad, present. Applies an orthographic camera.
            `logical_width` / `logical_height` are the letterboxed present size.
            `fill_screen_rect` / `draw_debug_text` are HUD space (ignore camera).
+           The sandbox HUD is optional (F1 / backtick); `--smoke` skips it.
 Texture    GPU image from RGBA8 pixels (`create_texture`) or a BMP (`load_bmp`).
            Nearest-neighbor sampling; destroy before the Renderer.
 Camera     2D ortho view: `position` is the world point at the viewport center.
@@ -38,7 +40,7 @@ Entity     Lightweight transform + size + optional texture. Not an ECS.
            `Transform::then` composes a child without parent pointers.
 ```
 
-`Types.hpp` defines `Color`, `Vec2`, and `Rect`. `Rect::overlaps` / `Rect::contains` are the 2D AABB helpers. `midas.hpp` is an umbrella include.
+`Types.hpp` defines `Color`, `Vec2`, and `Rect`. `Color::lerp` mixes two 0–1 colors (`t` clamped to `[0, 1]`). `Rect::overlaps` / `Rect::contains` are half-open 2D AABB helpers (shared edges do not overlap). `midas.hpp` is an umbrella include.
 
 Games talk only to `Engine` and the types it returns:
 
@@ -91,7 +93,7 @@ The renderer uses SDL3 logical presentation (`SDL_LOGICAL_PRESENTATION_LETTERBOX
 - **Mismatched aspect (resized window, odd display):** black bars pad the extra drawable region. The logical 1280×720 rectangle is undistorted in the middle.
 - **Mouse:** `Engine` converts window pixels → logical coordinates (`SDL_ConvertEventToRenderCoordinates` / `SDL_RenderCoordinatesFromWindow`). Pointers in the bars fall outside `0 .. logical_width/height`.
 - **Camera:** always pass `Renderer::logical_width/height` as the viewport, never raw drawable pixels. World fills and textures share `Camera::project`, so a gold square and a gold-tinted sprite of the same world rect stay aligned at any zoom. Tint is a per-texel multiply, not a function of dest size.
-- **HUD:** `fill_screen_rect` and `draw_debug_text` skip the camera so an overlay does not pan or zoom with the world. The sandbox draws FPS, camera position, and zoom this way.
+- **HUD:** `fill_screen_rect` and `draw_debug_text` skip the camera so an overlay does not pan or zoom with the world. The sandbox draws FPS, camera position, and zoom this way; **F1** or **`** toggles it. `--smoke` leaves it off so CI does not depend on debug text.
 
 ## Camera
 
@@ -101,7 +103,7 @@ Visible world size is `(logical_w / zoom)` by `(logical_h / zoom)`, so the view 
 
 The renderer starts with `zoom == 1` and `position` at the viewport center, so world units match logical pixels until the game moves the camera. `fill_rect` and `draw_texture` take world rectangles; `Camera::project` maps them to the screen. `Camera::zoom_toward` scales around a screen point (mouse-wheel zoom) and ignores non-positive multipliers. Projection uses `clamped_zoom()` so a zero/NaN zoom cannot divide by zero.
 
-The sandbox pans with WASD / arrows (or right-mouse drag) at constant **screen-space** speed (`pan / zoom`) and zooms with Q/E or the wheel. Space resets the view. Held WASD and the right mouse button are released if the window loses focus, so the camera cannot keep sliding while you are in another app. Mouse-wheel and right-drag deltas are clamped so a cursor warp or a wild trackpad burst cannot jump the view. A HUD in the top-left shows the fixed `dt`, wall-clock FPS, camera position, and zoom.
+The sandbox pans with WASD / arrows (or right-mouse drag) at constant **screen-space** speed (`pan / zoom`) and zooms with Q/E or the wheel. Space resets the view. Held WASD and the right mouse button are released if the window loses focus, so the camera cannot keep sliding while you are in another app. Coming back into focus re-reads the OS keyboard and mouse buttons, so a still-held W resumes pan without needing a new key-down. Mouse-wheel and right-drag deltas are clamped so a cursor warp or a wild trackpad burst cannot jump the view. A HUD in the top-left shows the fixed `dt`, wall-clock FPS, camera position, and zoom (toggle with F1 or backtick).
 
 ## Textures
 
@@ -114,7 +116,7 @@ Both paths throw on bad input (empty path, missing file, undersized pixel buffer
 
 Textures use nearest-neighbor sampling (`SDL_SCALEMODE_NEAREST`) so pixel art stays sharp when the camera zooms. Linear filtering is intentionally not exposed yet.
 
-The sandbox locates `assets/midas_sprite.bmp` via `Engine::executable_directory()`, `argv[0]`, `./assets`, and the source tree `apps/sandbox/assets`. `--smoke` fails if that BMP is missing. An interactive run logs the search and falls back to a generated checkerboard.
+The sandbox locates `assets/midas_sprite.bmp` via `Engine::executable_directory()`, `argv[0]`, `./assets`, and the source tree `apps/sandbox/assets`. `--smoke` only accepts a BMP next to the binary (the CMake copy / install rule) and fails if that file is missing. An interactive run logs the search and falls back to a generated checkerboard.
 
 ## Entities and AABB
 
@@ -122,7 +124,9 @@ The sandbox locates `assets/midas_sprite.bmp` via `Engine::executable_directory(
 
 `Entity` is a drawable bag of data: transform, unscaled size, color (fill or texture tint), and an optional **non-owning** `const Texture*`. Keep entities in an array; draw with `draw_entity`.
 
-`Rect` is the 2D AABB (`x, y, w, h` with top-left origin). `Rect::overlaps`, `Rect::contains`, and `Entity::overlaps` are the collision starter. Width/height should stay non-negative.
+`Rect` is the 2D AABB (`x, y, w, h` with top-left origin). `contains` is half-open (`[x, x+w) × [y, y+h)`). `overlaps` uses the same edges, so rectangles that only share a boundary do not overlap, and a zero-size rect is empty. `Entity::overlaps` is the collision starter. Width/height should stay non-negative.
+
+`Color::lerp(a, b, t)` is the 0–1 mix used by the sandbox plinth (gold toward bronze). `t` outside `[0, 1]` or NaN is clamped.
 
 ## Dependencies
 

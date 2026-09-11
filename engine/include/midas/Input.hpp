@@ -20,6 +20,8 @@ enum class Key {
     Right,
     Up,
     Down,
+    F1,
+    Grave,  // backtick / tilde key
 };
 
 enum class MouseButton {
@@ -36,6 +38,10 @@ enum class MouseButton {
 /// the first real sample, on focus gain, and while the window is unfocused, so
 /// a cursor warp cannot jump the camera. Per-tick mouse and wheel deltas are
 /// also clamped — a huge OS jump still pans/zooms a bounded amount.
+///
+/// Focus loss releases held keys/buttons. Focus gain re-reads the OS keyboard
+/// and mouse-button state so WASD still pans if you alt-tab back with a key
+/// held (a leftover KEY_DOWN is not required).
 class Input {
 public:
     Input(const Input&) = delete;
@@ -65,6 +71,7 @@ private:
     void set_mouse_position(float x, float y) noexcept;
     void request_quit() noexcept;
     void release_held() noexcept;
+    void sync_held_from_device() noexcept;
 
     struct Impl;
     std::unique_ptr<Impl> impl_;

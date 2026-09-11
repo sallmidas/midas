@@ -58,7 +58,7 @@ The debug tree is `build/debug/`. The sandbox binary is:
 ./build/debug/bin/midas_sandbox
 ```
 
-CMake copies `apps/sandbox/assets/` next to that binary (`build/debug/bin/assets/`), including the demo BMP sprite.
+CMake copies `apps/sandbox/assets/midas_sprite.bmp` next to that binary (`build/debug/bin/assets/`). Changing the BMP recopies it even if the sandbox did not relink. `cmake --install --prefix <prefix>` puts `midas_sandbox` in `<prefix>/bin` and the BMP in `<prefix>/bin/assets`.
 
 Release is the same flow with optimizations:
 
@@ -72,7 +72,7 @@ cmake --build --preset release
 
 ## Run
 
-The sandbox clears to charcoal and draws a small gold/bronze scene: a tiled floor strip, a solid gold square, the BMP sprite, a gold-tinted copy of that sprite, a half-scale child sprite (`Transform::then`), and corner markers so pan/zoom has landmarks. A screen-space HUD (top-left) shows the fixed 60 Hz `dt`, wall-clock FPS, camera position, and zoom — it does not pan with the world.
+The sandbox clears to charcoal and draws a small gold/bronze scene: a tiled floor strip, a solid gold square (easing toward bronze with `Color::lerp`), the BMP sprite, a gold-tinted copy of that sprite, a half-scale child sprite (`Transform::then`), and corner markers so pan/zoom has landmarks. A screen-space HUD (top-left) shows the fixed 60 Hz `dt`, wall-clock FPS, camera position, and zoom — it does not pan with the world. **F1** or **`** hides it (handy for demos). `--smoke` leaves the HUD off so the dummy driver never has to draw debug text.
 
 | Input | Action |
 | --- | --- |
@@ -82,10 +82,11 @@ The sandbox clears to charcoal and draws a small gold/bronze scene: a tiled floo
 | **Q** / **E** | Zoom out / in around the view center (clamped to 0.25–8) |
 | Mouse wheel | Zoom toward the cursor (same clamp) |
 | **Space** | Reset pan and zoom |
+| **F1** or **`** | Toggle the debug HUD |
 
 Textures use **nearest-neighbor** sampling so the BMP stays sharp when zoomed.
 
-Headless / CI smoke (a few 60 Hz ticks, then exit). This path also runs camera and AABB self-checks and fails if the BMP was not copied next to the binary:
+Headless / CI smoke (a few 60 Hz ticks, then exit). This path also runs camera, AABB, `Transform::then`, and `Color::lerp` self-checks and fails if the BMP was not copied next to the binary. It does **not** require the debug HUD:
 
 ```bash
 SDL_VIDEODRIVER=dummy ./build/debug/bin/midas_sandbox --smoke
@@ -111,7 +112,14 @@ cmake -S . -B build/debug -G Ninja -DCMAKE_BUILD_TYPE=Debug
 cmake --build build/debug
 ```
 
-On Linux, the sandbox `BUILD_RPATH` is `$ORIGIN` so a shared libSDL3 placed next to the binary can be found. On macOS it includes `@executable_path` plus Homebrew prefixes.
+On Linux, the sandbox `BUILD_RPATH` / `INSTALL_RPATH` is `$ORIGIN` so a shared libSDL3 placed next to the binary can be found. On macOS it includes `@executable_path` plus Homebrew prefixes.
+
+Install the sandbox and its BMP (optional):
+
+```bash
+cmake --install build/debug --prefix /tmp/midas-install
+/tmp/midas-install/bin/midas_sandbox
+```
 
 ## Homebrew vs FetchContent
 
