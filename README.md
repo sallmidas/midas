@@ -21,6 +21,8 @@ cmake --build --preset debug
 ./build/debug/bin/midas_sandbox
 ```
 
+A `release` preset is the same commands with `release` instead of `debug`.
+
 If SDL3 is not installed, CMake fetches **SDL3 3.4.16** automatically.
 
 Press **Esc** or close the window to quit. See [docs/BUILDING.md](docs/BUILDING.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

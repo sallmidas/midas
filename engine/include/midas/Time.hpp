@@ -5,6 +5,7 @@
 
 namespace midas {
 
+/// Fixed 60 Hz timestep. `delta_seconds()` is always `1/60` while the loop is capped.
 class Time {
 public:
     static constexpr int tick_hz = 60;

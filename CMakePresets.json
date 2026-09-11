@@ -1,5 +1,5 @@
 {
-  "version": 6,
+  "version": 3,
   "cmakeMinimumRequired": {
     "major": 3,
     "minor": 21,
@@ -16,6 +16,17 @@
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       }
+    },
+    {
+      "name": "release",
+      "displayName": "Release",
+      "description": "Optimized Ninja build. Same SDL3 resolution as debug.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -24,6 +35,12 @@
       "configurePreset": "debug",
       "displayName": "Debug",
       "description": "Build the debug preset"
+    },
+    {
+      "name": "release",
+      "configurePreset": "release",
+      "displayName": "Release",
+      "description": "Build the release preset"
     }
   ]
 }

@@ -3,6 +3,7 @@
 #include "internal/Sdl.hpp"
 #include "internal/WindowNative.hpp"
 
+#include <stdexcept>
 #include <utility>
 
 namespace midas {

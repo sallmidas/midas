@@ -11,8 +11,8 @@ xcode-select --install
 brew install cmake ninja sdl3
 ```
 
-- **CMake** 3.21 or newer (presets)
-- **Ninja** (the `debug` preset generator)
+- **CMake** 3.21 or newer (presets version 3)
+- **Ninja** (the `debug` and `release` preset generator)
 - **SDL3** via Homebrew (`brew install sdl3`), typically under `/opt/homebrew`
 
 Apple clang from Command Line Tools is enough (`c++` / `clang++` with `-std=c++20`).
@@ -34,7 +34,15 @@ The debug tree is `build/debug/`. The sandbox binary is:
 ./build/debug/bin/midas_sandbox
 ```
 
-`compile_commands.json` is generated in `build/debug/` for clangd.
+Release is the same flow with optimizations:
+
+```bash
+cmake --preset release
+cmake --build --preset release
+./build/release/bin/midas_sandbox
+```
+
+`compile_commands.json` is generated in `build/debug/` (and `build/release/`) for clangd.
 
 ## Run
 
@@ -53,6 +61,7 @@ SDL_VIDEODRIVER=dummy ./build/debug/bin/midas_sandbox --smoke
 | Preset | Build type | Generator | Binary dir |
 | --- | --- | --- | --- |
 | `debug` | Debug | Ninja | `build/debug` |
+| `release` | Release | Ninja | `build/release` |
 
 Example without presets:
 

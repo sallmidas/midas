@@ -4,6 +4,7 @@
 
 namespace midas {
 
+/// RGBA in 0–1. `gold()` / `charcoal()` are the Midas sandbox palette.
 struct Color {
     float r{};
     float g{};

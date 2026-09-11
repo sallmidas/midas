@@ -8,6 +8,7 @@ namespace midas {
 
 class Renderer;
 
+/// OS window. Native SDL handles stay in `Native` (engine-private).
 class Window {
 public:
     Window(const Window&) = delete;

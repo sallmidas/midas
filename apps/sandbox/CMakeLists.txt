@@ -15,3 +15,10 @@ set_target_properties(midas_sandbox PROPERTIES
     OUTPUT_NAME midas_sandbox
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 )
+
+# Homebrew's libSDL3.dylib when running from the build tree (Apple Silicon / Intel).
+if(APPLE)
+    set_target_properties(midas_sandbox PROPERTIES
+        BUILD_RPATH "@executable_path;/opt/homebrew/lib;/usr/local/lib"
+    )
+endif()

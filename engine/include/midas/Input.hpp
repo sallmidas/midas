@@ -18,6 +18,7 @@ enum class Key {
     Down,
 };
 
+/// Keyboard snapshot for the current tick. `key_pressed` is an edge (down this tick).
 class Input {
 public:
     Input(const Input&) = delete;

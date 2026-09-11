@@ -8,6 +8,7 @@ namespace midas {
 
 class Window;
 
+/// 2D present path: clear, fill an axis-aligned rect, present.
 class Renderer {
 public:
     Renderer(const Renderer&) = delete;

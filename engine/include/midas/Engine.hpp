@@ -15,9 +15,15 @@ struct EngineConfig {
     std::string title{"Midas"};
     int width{1280};
     int height{720};
+    /// 0 = run until quit. Positive = stop after that many 60 Hz ticks (sandbox `--smoke`).
     int max_ticks{0};
 };
 
+/// Owns the four engine modules and the 60 Hz tick loop.
+///
+/// Copies/moves are deleted because the SDL video subsystem and native window are
+/// unique. Pass a tick callback to `run()`; call `request_quit()` (or press Esc
+/// in the sandbox) to stop.
 class Engine {
 public:
     explicit Engine(EngineConfig config = {});
