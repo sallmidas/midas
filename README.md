@@ -5,8 +5,9 @@ Midas is a C++20 game engine. The public API covers a window, input, a fixed 60 
 ## Layout
 
 ```
-engine/include/midas/   Public headers (Engine, Window, Input, Time, Renderer,
-                        Texture, Camera, Entity). SDL stays out of these files.
+engine/include/midas/   Public headers (`midas.hpp` umbrella: Engine, Window,
+                        Input, Time/`Cooldown`, Renderer, Texture, Camera,
+                        Entity, Types). SDL stays out of these files.
 engine/src/             Engine implementation (SDL3 kept private)
 apps/sandbox/           Demo scene: camera, sprites, entities, Esc/quit
 apps/sandbox/assets/    Demo BMP copied next to the sandbox binary

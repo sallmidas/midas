@@ -51,7 +51,9 @@ private:
 /// Tick with `Time::delta_seconds()` (the fixed 1/60 gameplay step, not
 /// wall-clock `frame_seconds()`). Default-constructed and expired cooldowns
 /// are `ready()`. `start` of a non-positive or non-finite duration leaves it
-/// ready. A non-finite `tick` is ignored.
+/// ready. A non-finite `tick` is ignored. Non-finite `remaining` (a direct
+/// write) is expired: `ready()` is true and `tick` snaps it to 0 — same
+/// policy as a bad `start`.
 struct Cooldown {
     float remaining{};
 
@@ -60,6 +62,10 @@ struct Cooldown {
     }
 
     void tick(float dt) noexcept {
+        if (!std::isfinite(remaining) || remaining <= 0.0f) {
+            remaining = 0.0f;
+            return;
+        }
         if (!std::isfinite(dt) || dt <= 0.0f) {
             return;
         }
@@ -67,7 +73,7 @@ struct Cooldown {
     }
 
     [[nodiscard]] bool ready() const noexcept {
-        return !(remaining > 0.0f);
+        return !(std::isfinite(remaining) && remaining > 0.0f);
     }
 };
 
