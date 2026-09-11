@@ -62,7 +62,7 @@ SDL_VIDEODRIVER=dummy ./build/debug/bin/midas_sandbox --smoke
 # or: ctest --preset debug
 ```
 
-`--smoke` runs a header-only math self-check **before** SDL (clamp, Vec2 including `normalized_or_zero`, Color, Rect AABB, Camera, Transform, Entity, Cooldown, CPU `make_checkerboard_rgba`, three-space mouse policy), then a few dummy-video ticks that **require** `assets/midas_sprite.bmp` next to the binary (CMake copies it there; `cmake --install` places it beside the installed sandbox). A missing copy is an error in smoke mode even if a BMP exists in the source tree. In an interactive run a missing BMP logs where it looked and falls back to a generated checkerboard. The HUD is skipped in smoke so the dummy video driver does not need debug text, and the logical/window/pixel size line is skipped so smoke output stays deterministic. The SDL window→logical converter is interactive-only (`SDL_RenderCoordinatesFromWindow` needs a renderer).
+`--smoke` runs a header-only math self-check **before** SDL (clamp, Vec2 including `normalized_or_zero`, Color, Rect AABB / `expanded` / `contains_inclusive`, Camera, Transform, Entity, Cooldown, CPU `make_checkerboard_rgba`, three-space mouse policy), then a few dummy-video ticks that **require** `assets/midas_sprite.bmp` next to the binary (CMake copies it there; `cmake --install` places it beside the installed sandbox). A missing copy is an error in smoke mode even if a BMP exists in the source tree. In an interactive run a missing BMP logs where it looked and falls back to a generated checkerboard. The HUD is skipped in smoke so the dummy video driver does not need debug text, and the logical/window/pixel size line is skipped so smoke output stays deterministic. The SDL window→logical converter is interactive-only (`SDL_RenderCoordinatesFromWindow` needs a renderer).
 
 See [docs/BUILDING.md](docs/BUILDING.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
@@ -70,7 +70,7 @@ See [docs/BUILDING.md](docs/BUILDING.md) and [docs/ARCHITECTURE.md](docs/ARCHITE
 
 Midas stays a small 2D engine. Natural follow-ons, not this tree:
 
-- **Physics** — `Rect::overlaps` / `Entity::overlaps` is the collision starter. Velocity and overlap resolution can wait.
+- **Physics** — `Rect::overlaps` / `Entity::overlaps` is the collision starter. Velocity and overlap resolution can wait. `Transform` is still position + scale (no rotation).
 - **Audio** — SDL3 can play samples without SDL_mixer. An engine audio stub can wait until a game needs it.
 - **Assets** — BMP + CPU RGBA are enough to learn uploads. PNG (SDL_image) and linear filtering stay opt-in later.
 

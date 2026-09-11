@@ -94,6 +94,20 @@ void self_check_math() {
     camera.position = {kViewportW * 0.5f, kViewportH * 0.5f};
     camera.zoom = 1.0f;
 
+    {
+        // Camera{} is zoom 1 at world origin — not the identity logical view.
+        Camera raw{};
+        const Rect raw_view = raw.visible_world_rect(kViewportW, kViewportH);
+        const Rect identity_view = camera.visible_world_rect(kViewportW, kViewportH);
+        if (raw.zoom != 1.0f || raw.position.x != 0.0f || raw.position.y != 0.0f ||
+            std::abs(identity_view.x) > 0.01f || std::abs(identity_view.y) > 0.01f ||
+            std::abs(raw_view.x - identity_view.x) < 1.0f ||
+            std::abs(raw_view.y - identity_view.y) < 1.0f) {
+            throw std::runtime_error(
+                "Midas self-check: Camera{} should not be the identity logical view");
+        }
+    }
+
     const Vec2 world{240.0f, 90.0f};
     const Vec2 roundtrip =
         camera.screen_to_world(camera.world_to_screen(world, kViewportW, kViewportH), kViewportW, kViewportH);
@@ -133,6 +147,15 @@ void self_check_math() {
     camera.zoom_toward(cursor, 0.0f, kViewportW, kViewportH);
     if (camera.zoom != 2.0f) {
         throw std::runtime_error("Midas self-check: non-positive zoom multiplier should be ignored");
+    }
+    camera.zoom_toward(cursor, std::numeric_limits<float>::quiet_NaN(), kViewportW, kViewportH);
+    camera.zoom_toward(cursor, std::numeric_limits<float>::infinity(), kViewportW, kViewportH);
+    camera.zoom_toward({std::numeric_limits<float>::quiet_NaN(), cursor.y}, 0.5f, kViewportW, kViewportH);
+    camera.zoom_toward(cursor, 0.5f, std::numeric_limits<float>::quiet_NaN(), kViewportH);
+    camera.zoom_toward(cursor, 0.5f, kViewportW, 0.0f);
+    if (camera.zoom != 2.0f) {
+        throw std::runtime_error(
+            "Midas self-check: NaN/Inf zoom_toward args should leave zoom unchanged");
     }
 
     camera.zoom = std::numeric_limits<float>::quiet_NaN();
@@ -301,6 +324,14 @@ void self_check_math() {
         if (!cooldown.ready() || cooldown.remaining != 0.0f) {
             throw std::runtime_error("Midas self-check: Cooldown::tick should snap negative remaining to 0");
         }
+        cooldown.remaining = std::numeric_limits<float>::quiet_NaN();
+        if (!cooldown.ready()) {
+            throw std::runtime_error("Midas self-check: Cooldown NaN remaining should already be ready");
+        }
+        cooldown.tick(0.1f);
+        if (!cooldown.ready() || cooldown.remaining != 0.0f) {
+            throw std::runtime_error("Midas self-check: Cooldown::tick should snap NaN remaining to 0");
+        }
     }
 
     const Rect pad{10.0f, 20.0f, 30.0f, 40.0f};
@@ -391,10 +422,11 @@ void self_check_math() {
     const Color clamped_hi = Color::lerp(gold, bronze, 4.0f);
     const Color clamped_lo = Color::lerp(gold, bronze, -2.0f);
     const Color clamped_nan = Color::lerp(gold, bronze, std::numeric_limits<float>::quiet_NaN());
+    const Color clamped_inf = Color::lerp(gold, bronze, std::numeric_limits<float>::infinity());
     if (std::abs(at0.r - gold.r) > 0.001f || std::abs(at0.g - gold.g) > 0.001f ||
         std::abs(at1.r - bronze.r) > 0.001f || std::abs(at1.b - bronze.b) > 0.001f ||
         std::abs(clamped_hi.r - bronze.r) > 0.001f || std::abs(clamped_lo.r - gold.r) > 0.001f ||
-        std::abs(clamped_nan.r - gold.r) > 0.001f ||
+        std::abs(clamped_nan.r - gold.r) > 0.001f || std::abs(clamped_inf.r - bronze.r) > 0.001f ||
         std::abs(mid.r - (gold.r + bronze.r) * 0.5f) > 0.001f ||
         std::abs(mid.a - 1.0f) > 0.001f) {
         throw std::runtime_error("Midas self-check: Color::lerp failed");
@@ -425,6 +457,17 @@ void self_check_math() {
         const auto with_nan_r = midas::make_checkerboard_rgba(1, 1, nan_rgb, nan_rgb, 1);
         if (with_nan_r[0] != 0) {
             throw std::runtime_error("Midas self-check: checkerboard NaN RGB should fall back to 0");
+        }
+        Color inf_rgb{std::numeric_limits<float>::infinity(), 0.0f, 0.0f, 1.0f};
+        const auto with_inf_r = midas::make_checkerboard_rgba(1, 1, inf_rgb, inf_rgb, 1);
+        if (with_inf_r[0] != 0) {
+            throw std::runtime_error("Midas self-check: checkerboard Inf RGB should fall back to 0");
+        }
+        Color inf_alpha = Color::white();
+        inf_alpha.a = std::numeric_limits<float>::infinity();
+        const auto with_inf_a = midas::make_checkerboard_rgba(1, 1, inf_alpha, inf_alpha, 1);
+        if (with_inf_a.size() != 4 || with_inf_a[3] != 255) {
+            throw std::runtime_error("Midas self-check: checkerboard Inf alpha should fall back to 1");
         }
     }
 }
@@ -703,6 +746,7 @@ int main(int argc, char** argv) {
         const midas::Vec2 viewport = engine.renderer().logical_size();
         DemoScene scene = build_demo_scene(sprite.texture, viewport.x, viewport.y);
 
+        // Identity logical view (center, zoom 1). Camera{} would be origin, not this.
         midas::Camera camera = engine.renderer().camera();
 
         // Interactive demos show the HUD (dt/fps/camera plus a one-line

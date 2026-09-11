@@ -50,7 +50,7 @@ struct Color {
         return {1.0f, 1.0f, 1.0f, 1.0f};
     }
 
-    /// Mix `a` toward `b`. `t` is `clamp01`'d (NaN / negative → 0).
+    /// Mix `a` toward `b`. `t` is `clamp01`'d (NaN / negative → 0; Inf / above 1 → 1).
     /// Channels are not clamped — feed `gold()` / `white()` style 0–1 colors.
     [[nodiscard]] static constexpr Color lerp(Color a, Color b, float t) noexcept {
         const float u = clamp01(t);

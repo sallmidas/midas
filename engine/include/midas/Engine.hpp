@@ -31,8 +31,8 @@ struct EngineConfig {
 /// `Renderer` then `Window` then `SDL_Quit`. Destroy game `Texture`s before
 /// this `Engine`. If a texture outlives the renderer, its destructor is a
 /// no-op on the GPU handle (the renderer shares a small alive-flag; each
-/// `Texture` holds a `shared_ptr` to that flag — `shared_ptr<void>` at the
-/// private constructor so `Texture.hpp` stays SDL-free).
+/// `Texture` holds a `shared_ptr` to that flag). The private constructor
+/// takes `shared_ptr<void>` so `Texture.hpp` does not name the internal type.
 ///
 /// TODO: 2D audio (SDL3 audio device) is a later module; this loop is still
 /// video + input.

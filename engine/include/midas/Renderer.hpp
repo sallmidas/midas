@@ -63,7 +63,7 @@ public:
     /// in the message if the file is missing, unreadable, or not a BMP.
     [[nodiscard]] Texture load_bmp(std::string_view path);
 
-    /// Copies `camera` and sanitizes zoom/position (clamps zoom, drops NaNs).
+    /// Copies `camera` and sanitizes zoom/position (clamps zoom, drops non-finite pan).
     void set_camera(const Camera& camera) noexcept;
     [[nodiscard]] const Camera& camera() const noexcept;
 
