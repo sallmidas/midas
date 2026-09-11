@@ -132,7 +132,7 @@ void Engine::pump_events() {
     // and not framebuffer pixels. On a 2× panel, window (640,360) is the
     // center of a 1280×720 client; the drawable may be 2560×1440. Feeding
     // those window coords (or pixels) straight to Camera::zoom_toward is
-    // wrong whenever letterbox or dpi_scale is not 1:1.
+    // wrong whenever letterbox or pixel_density() is not 1:1.
     //
     // SDL_RenderCoordinatesFromWindow applies pixel density *and* logical
     // letterbox. If it fails, keep the last logical sample — do not fall
