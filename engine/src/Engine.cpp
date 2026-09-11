@@ -49,7 +49,11 @@ struct Engine::Impl {
     Time time;
 };
 
-Engine::Engine(EngineConfig config) : impl_(std::make_unique<Impl>(std::move(config))) {}
+Engine::Engine(EngineConfig config) : impl_(std::make_unique<Impl>(std::move(config))) {
+    // Renderer already copied the created size as logical present. OS size
+    // may already differ (tiling WM); keep them as separate numbers.
+    impl_->window.sync_size_from_native();
+}
 
 Engine::~Engine() = default;  // Impl member order: Renderer, then Window, then SDL_Quit.
 
@@ -108,6 +112,11 @@ void Engine::pump_events() {
 
     SDL_Event event{};
     while (SDL_PollEvent(&event)) {
+        if (event.type == SDL_EVENT_WINDOW_RESIZED ||
+            event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) {
+            impl_->window.sync_size_from_native();
+            impl_->renderer.reapply_logical_presentation();
+        }
         if (sdl_renderer != nullptr) {
             (void)SDL_ConvertEventToRenderCoordinates(sdl_renderer, &event);
         }

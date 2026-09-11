@@ -45,8 +45,9 @@ int parse_smoke_ticks(int argc, char** argv) {
 }
 
 /// Header-only math: camera invertibility, zoom clamps, AABB edges,
-/// Transform::then identity/associativity, Color::lerp, Vec2::length_squared.
-/// Runs before SDL so a broken Camera/Rect cannot hide behind a missing GPU.
+/// Rect::expanded/inset, Transform::then identity/associativity, Color::lerp,
+/// Vec2::length_squared. Runs before SDL so a broken Camera/Rect cannot hide
+/// behind a missing GPU.
 void self_check_math() {
     using midas::Camera;
     using midas::Entity;
@@ -164,6 +165,23 @@ void self_check_math() {
     if (!a.contains({0.0f, 0.0f}) || !a.contains({9.99f, 9.99f}) || a.contains({-0.01f, 0.0f}) ||
         empty.contains({0.0f, 0.0f})) {
         throw std::runtime_error("Midas self-check: AABB contains half-open edges failed");
+    }
+
+    const Rect pad{10.0f, 20.0f, 30.0f, 40.0f};
+    const Rect grown = pad.expanded(5.0f);
+    const Rect shrunk = pad.inset(5.0f);
+    const Rect roundtrip = pad.expanded(8.0f).inset(8.0f);
+    if (std::abs(grown.x - 5.0f) > 0.0f || std::abs(grown.y - 15.0f) > 0.0f ||
+        std::abs(grown.w - 40.0f) > 0.0f || std::abs(grown.h - 50.0f) > 0.0f ||
+        std::abs(shrunk.x - 15.0f) > 0.0f || std::abs(shrunk.w - 20.0f) > 0.0f ||
+        std::abs(shrunk.h - 30.0f) > 0.0f || pad.inset(5.0f).x != pad.expanded(-5.0f).x ||
+        std::abs(roundtrip.x - pad.x) > 0.0f || std::abs(roundtrip.y - pad.y) > 0.0f ||
+        std::abs(roundtrip.w - pad.w) > 0.0f || std::abs(roundtrip.h - pad.h) > 0.0f) {
+        throw std::runtime_error("Midas self-check: Rect::expanded/inset failed");
+    }
+    const Rect too_small = pad.inset(20.0f);
+    if (too_small.w > 0.0f || too_small.contains({10.0f, 20.0f})) {
+        throw std::runtime_error("Midas self-check: heavy Rect::inset should be empty");
     }
 
     const Transform parent{{100.0f, 50.0f}, {2.0f, 3.0f}};
@@ -379,11 +397,12 @@ DemoScene build_demo_scene(const midas::Texture& sprite, float viewport_w, float
     return DemoScene{std::move(scene), plinth_index};
 }
 
-void apply_camera_controls(midas::Engine& engine, midas::Camera& camera, const midas::Camera& home) {
+void apply_camera_controls(midas::Engine& engine, midas::Camera& camera) {
     const auto& input = engine.input();
     const float dt = static_cast<float>(engine.time().delta_seconds());
-    const float viewport_w = static_cast<float>(engine.renderer().logical_width());
-    const float viewport_h = static_cast<float>(engine.renderer().logical_height());
+    const midas::Vec2 viewport = engine.renderer().logical_size();
+    const float viewport_w = viewport.x;
+    const float viewport_h = viewport.y;
     const midas::Vec2 view_center{viewport_w * 0.5f, viewport_h * 0.5f};
 
     if (!input.window_focused()) {
@@ -391,8 +410,13 @@ void apply_camera_controls(midas::Engine& engine, midas::Camera& camera, const m
         return;
     }
 
+    // Identity view for the *current* logical viewport (not a stale copy from
+    // startup). Same-frame WASD / wheel / right-drag are skipped so a reset is
+    // not immediately overwritten. Sanitize drops any leftover NaN pan/zoom.
     if (input.key_pressed(midas::Key::Space)) {
-        camera = home;
+        camera.position = view_center;
+        camera.zoom = 1.0f;
+        camera.sanitize();
         return;
     }
 
@@ -445,7 +469,7 @@ void apply_camera_controls(midas::Engine& engine, midas::Camera& camera, const m
 /// `delta_seconds()` for the label and wall-clock `frames_per_second()` for pacing.
 /// Hidden during `--smoke` (math self-check does not need debug text) and when
 /// the player toggles it off with F1 or backtick. Line 3 is a one-line control
-/// legend (WASD, zoom, F1) so the README table is also on screen.
+/// legend (WASD, zoom, Space, F1) so the README table is also on screen.
 void draw_debug_overlay(midas::Engine& engine, const midas::Camera& camera) {
     auto& renderer = engine.renderer();
     const auto& time = engine.time();
@@ -453,9 +477,9 @@ void draw_debug_overlay(midas::Engine& engine, const midas::Camera& camera) {
     constexpr float x = 10.0f;
     constexpr float y = 10.0f;
     constexpr float line_h = 12.0f;
-    constexpr float banner_w = 560.0f;
-    constexpr float banner_h = 46.0f;
-    renderer.fill_screen_rect({x - 4.0f, y - 4.0f, banner_w, banner_h}, {0.0f, 0.0f, 0.0f, 0.55f});
+    constexpr float pad = 4.0f;
+    const midas::Rect hud_text{x, y, 552.0f, 38.0f};
+    renderer.fill_screen_rect(hud_text.expanded(pad), {0.0f, 0.0f, 0.0f, 0.55f});
 
     std::ostringstream line1;
     line1 << std::fixed << std::setprecision(4) << "Midas  dt=" << time.delta_seconds() << "s";
@@ -473,7 +497,8 @@ void draw_debug_overlay(midas::Engine& engine, const midas::Camera& camera) {
 
     renderer.draw_debug_text({x, y}, line1.str(), midas::Color::gold());
     renderer.draw_debug_text({x, y + line_h}, line2.str(), midas::Color::white());
-    renderer.draw_debug_text({x, y + line_h * 2.0f}, "WASD pan  Q/E or wheel zoom  F1/` HUD",
+    renderer.draw_debug_text({x, y + line_h * 2.0f},
+                             "WASD pan  Q/E or wheel zoom  Space reset  F1/` HUD",
                              midas::Color::bronze());
 }
 
@@ -501,12 +526,10 @@ int main(int argc, char** argv) {
                       << " from " << sprite.path.string() << '\n';
         }
 
-        const float viewport_w = static_cast<float>(engine.renderer().logical_width());
-        const float viewport_h = static_cast<float>(engine.renderer().logical_height());
-        DemoScene scene = build_demo_scene(sprite.texture, viewport_w, viewport_h);
+        const midas::Vec2 viewport = engine.renderer().logical_size();
+        DemoScene scene = build_demo_scene(sprite.texture, viewport.x, viewport.y);
 
-        const midas::Camera home = engine.renderer().camera();
-        midas::Camera camera = home;
+        midas::Camera camera = engine.renderer().camera();
 
         // Interactive demos show the HUD (dt/fps/camera plus a one-line
         // WASD/zoom/F1 legend); --smoke asserts math/BMP and never draws it.
@@ -516,6 +539,8 @@ int main(int argc, char** argv) {
         }
 
         const int status = engine.run([&](midas::Engine& engine) {
+            // Quit before camera/HUD work so the last tick does not present a
+            // half-updated frame (close-box already skips on_tick entirely).
             if (engine.input().key_pressed(midas::Key::Escape)) {
                 engine.request_quit();
                 return;
@@ -526,7 +551,7 @@ int main(int argc, char** argv) {
                 show_hud = !show_hud;
             }
 
-            apply_camera_controls(engine, camera, home);
+            apply_camera_controls(engine, camera);
             engine.renderer().set_camera(camera);
 
             // Teaching Color::lerp: the solid plinth eases gold ↔ bronze.

@@ -15,7 +15,10 @@ namespace midas {
 /// circles. Letterboxing (see `Renderer`) handles non-matching window pixels.
 ///
 /// With `zoom == 1` and `position` at the viewport center, world units match
-/// window / logical pixels (the default the renderer starts with).
+/// window / logical pixels (the default the renderer starts with). Always pass
+/// `Renderer::logical_width/height` as the viewport — after a window resize
+/// those stay at the letterboxed `EngineConfig` size, while `Window::width`
+/// follows the OS client area.
 ///
 /// Zoom is kept in `[min_zoom, max_zoom]`. Projection uses a sanitized zoom so
 /// a zero/NaN zoom cannot divide by zero; call `sanitize()` after writing

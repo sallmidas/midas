@@ -23,8 +23,9 @@ class Window;
 /// the `EngineConfig` window size). SDL letterboxes that onto the real drawable
 /// (`SDL_LOGICAL_PRESENTATION_LETTERBOX`): black bars if the window pixel aspect
 /// differs; extra pixels on a Retina panel whose aspect still matches. Camera
-/// math and mouse coordinates use this logical size, not raw drawable pixels.
-/// HUD helpers (`fill_screen_rect`, `draw_debug_text`) skip the camera.
+/// math and mouse coordinates use this logical size, not raw drawable pixels
+/// and not the live `Window` size after a resize. HUD helpers
+/// (`fill_screen_rect`, `draw_debug_text`) skip the camera.
 class Renderer {
 public:
     Renderer(const Renderer&) = delete;
@@ -64,9 +65,13 @@ public:
     [[nodiscard]] const Camera& camera() const noexcept;
 
     /// Logical present size in pixels (the coordinate space of `Input` mouse
-    /// positions and of `Camera` viewport arguments).
+    /// positions and of `Camera` viewport arguments). This is the
+    /// `EngineConfig` window size; it does **not** follow OS resizes.
+    /// Letterboxing pads the extra drawable. Pass these (or `logical_size()`)
+    /// to `Camera`, never `Window::width/height`.
     [[nodiscard]] int logical_width() const noexcept;
     [[nodiscard]] int logical_height() const noexcept;
+    [[nodiscard]] Vec2 logical_size() const noexcept;
 
 private:
     friend class Engine;
@@ -78,6 +83,8 @@ private:
     const Native* native() const noexcept;
 
     [[nodiscard]] Rect project_world(const Rect& world) const noexcept;
+
+    void reapply_logical_presentation() noexcept;
 
     struct Impl;
     std::unique_ptr<Impl> impl_;

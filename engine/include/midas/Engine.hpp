@@ -29,7 +29,8 @@ struct EngineConfig {
 /// **Shutdown** (C++ destroys members in reverse declaration order):
 /// `Renderer` then `Window` then `SDL_Quit`. Destroy game `Texture`s before
 /// this `Engine`. If a texture outlives the renderer, its destructor is a
-/// no-op on the GPU handle (the renderer shares a small alive-flag).
+/// no-op on the GPU handle (the renderer shares a small alive-flag; each
+/// `Texture` holds a typed copy of that flag).
 class Engine {
 public:
     explicit Engine(EngineConfig config = {});
