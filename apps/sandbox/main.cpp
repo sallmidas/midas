@@ -170,13 +170,13 @@ void self_check_math() {
     const Rect pad{10.0f, 20.0f, 30.0f, 40.0f};
     const Rect grown = pad.expanded(5.0f);
     const Rect shrunk = pad.inset(5.0f);
-    const Rect roundtrip = pad.expanded(8.0f).inset(8.0f);
+    const Rect pad_roundtrip = pad.expanded(8.0f).inset(8.0f);
     if (std::abs(grown.x - 5.0f) > 0.0f || std::abs(grown.y - 15.0f) > 0.0f ||
         std::abs(grown.w - 40.0f) > 0.0f || std::abs(grown.h - 50.0f) > 0.0f ||
         std::abs(shrunk.x - 15.0f) > 0.0f || std::abs(shrunk.w - 20.0f) > 0.0f ||
         std::abs(shrunk.h - 30.0f) > 0.0f || pad.inset(5.0f).x != pad.expanded(-5.0f).x ||
-        std::abs(roundtrip.x - pad.x) > 0.0f || std::abs(roundtrip.y - pad.y) > 0.0f ||
-        std::abs(roundtrip.w - pad.w) > 0.0f || std::abs(roundtrip.h - pad.h) > 0.0f) {
+        std::abs(pad_roundtrip.x - pad.x) > 0.0f || std::abs(pad_roundtrip.y - pad.y) > 0.0f ||
+        std::abs(pad_roundtrip.w - pad.w) > 0.0f || std::abs(pad_roundtrip.h - pad.h) > 0.0f) {
         throw std::runtime_error("Midas self-check: Rect::expanded/inset failed");
     }
     const Rect too_small = pad.inset(20.0f);
