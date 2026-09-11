@@ -51,16 +51,27 @@ include(GNUInstallDirs)
 install(TARGETS midas_sandbox RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
 install(FILES "${MIDAS_SANDBOX_BMP}" DESTINATION "${CMAKE_INSTALL_BINDIR}/assets")
 
-# Shared SDL3 next to the binary / Homebrew prefixes when running from the build tree.
+# Shared SDL3 next to the binary, then the Homebrew keg lib (from
+# `brew --prefix sdl3`), then stock prefixes. Homebrew bottles usually
+# embed an absolute keg install name; rpath covers @rpath dylibs and a
+# copied libSDL3 beside the executable.
 if(APPLE)
+    set(_midas_rpath "@executable_path;/opt/homebrew/lib;/usr/local/lib")
+    if(MIDAS_SDL3_HOMEBREW_LIBDIR)
+        set(_midas_rpath "@executable_path;${MIDAS_SDL3_HOMEBREW_LIBDIR};/opt/homebrew/lib;/usr/local/lib")
+    endif()
     set_target_properties(midas_sandbox PROPERTIES
-        BUILD_RPATH "@executable_path;/opt/homebrew/lib;/usr/local/lib"
-        INSTALL_RPATH "@executable_path;/opt/homebrew/lib;/usr/local/lib"
+        BUILD_RPATH "${_midas_rpath}"
+        INSTALL_RPATH "${_midas_rpath}"
     )
 elseif(UNIX)
+    set(_midas_rpath "$ORIGIN")
+    if(MIDAS_SDL3_HOMEBREW_LIBDIR)
+        set(_midas_rpath "$ORIGIN;${MIDAS_SDL3_HOMEBREW_LIBDIR}")
+    endif()
     set_target_properties(midas_sandbox PROPERTIES
-        BUILD_RPATH "$ORIGIN"
-        INSTALL_RPATH "$ORIGIN"
+        BUILD_RPATH "${_midas_rpath}"
+        INSTALL_RPATH "${_midas_rpath}"
     )
 endif()
 

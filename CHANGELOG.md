@@ -1,0 +1,25 @@
+# Changelog
+
+Bullet highlights from the 2D engine fine-tunes on `main`. No 3D / ECS / editor.
+
+## Unreleased (pass 13)
+
+- Homebrew SDL3 discovery matches the docs: `brew --prefix sdl3` keg first, then `/opt/homebrew`, then `/usr/local` (a leftover Intel tree can no longer shadow Apple Silicon).
+- Sandbox rpath includes the keg `lib/` when `brew` is on `PATH`.
+- BUILDING / README: keg vs Cellar, Retina three-space gotchas after high-DPI mapping.
+- Drop unused `<utility>` in `Renderer.cpp`; reword the stale pass-2 focus-gain comment.
+
+## Passes 1–12
+
+- **1** — Textures, orthographic camera, entity / `Transform` helpers; teachable API comments; release preset; macOS rpath.
+- **2** — Input / time hardening; letterboxed 2D drawing; focus loss releases held keys.
+- **3** — Optional F1 / backtick debug HUD; `Color::lerp`; `--smoke` requires the BMP copied next to the binary; `cmake --install` places that BMP.
+- **4** — Teardown / `GpuLifetime` seatbelt; HUD control legend; `Vec2::length_squared`.
+- **5** — Re-apply letterbox on resize / DPI change; Space resets the identity logical view; `Rect::expanded` / `inset`.
+- **6** — Mouse mapped window→logical on high-DPI (`SDL_RenderCoordinatesFromWindow`); `Window` pixel size / density; `clamp` / `clamp01`.
+- **7** — Wheel zoom uses `Rect::contains_inclusive` (far present edges zoom; letterbox bars do not); three-space docs; `Cooldown`.
+- **8** — Cooldown leftovers (non-finite remaining is expired); `clamp01` consistency; umbrella `midas.hpp` exports.
+- **9** — Public-header audit; NaN-safe `Vec2::normalized_or_zero`; checkerboard non-finite channel fallbacks.
+- **10** — `draw_entity` skips non-finite dest; `Camera{}` is origin, not the identity view; `zoom_toward` ignores NaN/Inf; smoke locks those contracts.
+- **11** — `Entity.hpp` includes `<cmath>` itself; `clamp01` Inf docs; smoke asserts Inf zoom → 1.
+- **12** — README / BUILDING smoke lists mention Inf zoom (docs-only).

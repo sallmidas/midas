@@ -1,11 +1,35 @@
-# Prefer an installed SDL3 3.2+ (Homebrew on macOS / Linuxbrew, or a system
-# package such as Debian/Ubuntu `libsdl3-dev`). 3.2 is the floor because the
-# sandbox HUD uses `SDL_RenderDebugText`. If none is found, fetch SDL3 3.4.16
-# via CMake FetchContent.
+# Prefer an installed SDL3 3.2+ (Homebrew on macOS / Linux Homebrew, or a
+# system package such as Debian/Ubuntu `libsdl3-dev`). 3.2 is the floor
+# because the sandbox HUD uses `SDL_RenderDebugText`. If none is found,
+# fetch SDL3 3.4.16 via CMake FetchContent.
+#
+# Homebrew search order (first match wins). `list(PREPEND)` puts the last
+# call at the front of CMAKE_PREFIX_PATH, so fallbacks are prepended first:
+#   1. `brew --prefix sdl3`  — the keg (`/opt/homebrew/opt/sdl3` or
+#      `/usr/local/opt/sdl3`). Stable opt symlink; do not hardcode
+#      `Cellar/sdl3/<version>` (that path changes on every upgrade).
+#   2. `/opt/homebrew`       — Apple Silicon Homebrew root
+#   3. `/usr/local`          — Intel Homebrew / manual installs
+# `/usr/local` exists on most Macs even when Homebrew lives in
+# `/opt/homebrew`. If that leftover tree also has an SDL3, putting it first
+# would shadow the Apple Silicon keg (Rosetta / old Intel Homebrew).
 
 set(MIDAS_SDL3_FETCH_VERSION "3.4.16")
+set(MIDAS_SDL3_HOMEBREW_LIBDIR "")
 
+# Stock macOS roots, lowest priority first.
 if(APPLE)
+    if(EXISTS "/usr/local")
+        list(PREPEND CMAKE_PREFIX_PATH "/usr/local")
+    endif()
+    if(EXISTS "/opt/homebrew")
+        list(PREPEND CMAKE_PREFIX_PATH "/opt/homebrew")
+    endif()
+endif()
+
+# `brew --prefix sdl3` is the keg. Highest priority on macOS and on Linux
+# Homebrew (`/home/linuxbrew/.linuxbrew/opt/sdl3`).
+if(UNIX)
     find_program(MIDAS_BREW brew)
     if(MIDAS_BREW)
         execute_process(
@@ -18,15 +42,10 @@ if(APPLE)
         if(MIDAS_BREW_SDL3_RESULT EQUAL 0 AND EXISTS "${MIDAS_BREW_SDL3_PREFIX}")
             list(PREPEND CMAKE_PREFIX_PATH "${MIDAS_BREW_SDL3_PREFIX}")
             message(STATUS "Midas: Homebrew sdl3 prefix is ${MIDAS_BREW_SDL3_PREFIX}")
+            if(EXISTS "${MIDAS_BREW_SDL3_PREFIX}/lib")
+                set(MIDAS_SDL3_HOMEBREW_LIBDIR "${MIDAS_BREW_SDL3_PREFIX}/lib")
+            endif()
         endif()
-    endif()
-
-    # Apple Silicon default prefix, then Intel Homebrew.
-    if(EXISTS "/opt/homebrew")
-        list(PREPEND CMAKE_PREFIX_PATH "/opt/homebrew")
-    endif()
-    if(EXISTS "/usr/local")
-        list(PREPEND CMAKE_PREFIX_PATH "/usr/local")
     endif()
 endif()
 

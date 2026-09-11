@@ -238,7 +238,7 @@ void Input::handle_native_event(const void* native_event) noexcept {
             impl_->mouse_dx = 0.0f;
             impl_->mouse_dy = 0.0f;
             impl_->wheel_y = 0.0f;
-            // Pass-2 released keys on focus loss, so a held WASD would stay
+            // Focus loss releases held keys, so a still-held WASD would stay
             // dead until a new KEY_DOWN. Re-read the OS so pan resumes.
             sync_held_from_device();
             // Same-frame `key_pressed` uses `down && !previous`. Copy the

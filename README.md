@@ -12,12 +12,13 @@ engine/src/             Engine implementation (SDL3 kept private)
 apps/sandbox/           Demo scene: camera, sprites, entities, Esc/quit
 apps/sandbox/assets/    Demo BMP copied next to the sandbox binary
 docs/                   Architecture and macOS / Linux build notes
+CHANGELOG.md            Fine-tune pass highlights (1–12)
 cmake/                  Homebrew / system SDL3 discovery, FetchContent fallback
 ```
 
 ## Quick start
 
-**macOS (Apple Silicon, Homebrew):**
+**macOS (Homebrew on Apple Silicon or Intel):**
 
 ```bash
 brew install cmake ninja sdl3
@@ -25,6 +26,8 @@ cmake --preset debug
 cmake --build --preset debug
 ./build/debug/bin/midas_sandbox
 ```
+
+CMake finds the keg via `brew --prefix sdl3` (`/opt/homebrew/opt/sdl3` on Apple Silicon, `/usr/local/opt/sdl3` on Intel) — not a `Cellar/sdl3/<version>` path. Interactive startup prints `logical / window / pixels / density` so Retina (often 2× framebuffer, same aspect, no letterbox bars) is obvious. Do not scale mouse by that density.
 
 **Linux:**
 
