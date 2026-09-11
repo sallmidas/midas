@@ -13,11 +13,16 @@
 # `/usr/local` exists on most Macs even when Homebrew lives in
 # `/opt/homebrew`. If that leftover tree also has an SDL3, putting it first
 # would shadow the Apple Silicon keg (Rosetta / old Intel Homebrew).
+# Steps 2–3 are macOS-only. Linux does not prepend those roots (`/usr/local`
+# is a common empty prefix); `find_package` + FetchContent stay as before.
 
 set(MIDAS_SDL3_FETCH_VERSION "3.4.16")
 set(MIDAS_SDL3_HOMEBREW_LIBDIR "")
 
-# Stock macOS roots, lowest priority first.
+# Stock macOS roots, lowest priority first. Linux images often have an
+# empty `/usr/local`; do not prepend it here. `find_package` still searches
+# CMake's system prefixes (`/usr`, `/usr/local`) for `libsdl3-dev`. A miss
+# falls through to FetchContent — same path as before the keg-order fix.
 if(APPLE)
     if(EXISTS "/usr/local")
         list(PREPEND CMAKE_PREFIX_PATH "/usr/local")
@@ -28,7 +33,7 @@ if(APPLE)
 endif()
 
 # `brew --prefix sdl3` is the keg. Highest priority on macOS and on Linux
-# Homebrew (`/home/linuxbrew/.linuxbrew/opt/sdl3`).
+# Homebrew (`/home/linuxbrew/.linuxbrew/opt/sdl3`). No `brew` → no prepend.
 if(UNIX)
     find_program(MIDAS_BREW brew)
     if(MIDAS_BREW)
@@ -45,7 +50,11 @@ if(UNIX)
             if(EXISTS "${MIDAS_BREW_SDL3_PREFIX}/lib")
                 set(MIDAS_SDL3_HOMEBREW_LIBDIR "${MIDAS_BREW_SDL3_PREFIX}/lib")
             endif()
+        else()
+            message(STATUS "Midas: brew found but sdl3 keg missing; not prepending a Homebrew prefix")
         endif()
+    else()
+        message(STATUS "Midas: brew not on PATH; skipping Homebrew sdl3 prefix")
     endif()
 endif()
 
