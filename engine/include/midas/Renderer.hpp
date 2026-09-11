@@ -19,14 +19,15 @@ class Window;
 /// world rect stay the same size and position at any zoom. Tint is a per-texel
 /// multiply — it does not depend on dest size.
 ///
-/// Drawing happens in a **logical** 2D space (`logical_width` × `logical_height`,
-/// the `EngineConfig` window size). SDL letterboxes that onto the real drawable
-/// (`SDL_LOGICAL_PRESENTATION_LETTERBOX`): black bars if the window aspect
-/// differs; extra framebuffer pixels on a Retina panel (`Window::pixel_density`
-/// often 2) whose window aspect still matches. Camera math and mouse
-/// coordinates use this logical size, not `Window::width` after a resize and
-/// not `Window::pixel_width`. HUD helpers (`fill_screen_rect`,
-/// `draw_debug_text`) skip the camera.
+/// Drawing happens in **logical present pixels** (`logical_width` ×
+/// `logical_height`, captured from `EngineConfig`). That is not live
+/// `Window::width` (window coordinates) and not `Window::pixel_width`
+/// (framebuffer). SDL letterboxes the logical view onto the drawable
+/// (`SDL_LOGICAL_PRESENTATION_LETTERBOX`): black bars if the aspect differs;
+/// extra framebuffer pixels on a Retina panel (`Window::pixel_density` often
+/// 2) whose window aspect still matches. Camera math and mouse coordinates
+/// use this logical size. HUD helpers (`fill_screen_rect`, `draw_debug_text`)
+/// skip the camera.
 class Renderer {
 public:
     Renderer(const Renderer&) = delete;

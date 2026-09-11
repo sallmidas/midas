@@ -45,11 +45,16 @@ int parse_smoke_ticks(int argc, char** argv) {
 }
 
 /// Header-only math: camera invertibility, zoom clamps, AABB edges,
-/// Rect::expanded/inset, Transform::then identity/associativity, Color::lerp,
-/// Vec2::length_squared, clamp/clamp01. Runs before SDL so a broken
-/// Camera/Rect cannot hide behind a missing GPU.
+/// Rect::expanded/inset / contains_inclusive, Transform::then
+/// identity/associativity, Color::lerp, Vec2::length_squared, clamp/clamp01,
+/// Cooldown, and the three-space mouse policy (logical vs window vs pixels).
+/// Runs before SDL so a broken Camera/Rect cannot hide behind a missing GPU.
+/// `SDL_RenderCoordinatesFromWindow` itself needs a renderer — that mapping
+/// stays interactive-only; smoke checks the policy and the cost of mixing
+/// spaces.
 void self_check_math() {
     using midas::Camera;
+    using midas::Cooldown;
     using midas::Entity;
     using midas::Rect;
     using midas::Transform;
@@ -174,6 +179,97 @@ void self_check_math() {
     if (!a.contains({0.0f, 0.0f}) || !a.contains({9.99f, 9.99f}) || a.contains({-0.01f, 0.0f}) ||
         empty.contains({0.0f, 0.0f})) {
         throw std::runtime_error("Midas self-check: AABB contains half-open edges failed");
+    }
+
+    // Closed present-rect: far edges are still the view. Half-open `contains`
+    // rejects (10, 5) on a 10×10 rect — that is AABB, not letterbox bars.
+    const Rect present{0.0f, 0.0f, 1280.0f, 720.0f};
+    const Vec2 far_edge{1280.0f, 360.0f};
+    const Vec2 far_corner{1280.0f, 720.0f};
+    const Vec2 top_bar{640.0f, -40.0f};
+    const Vec2 bottom_bar{640.0f, 760.0f};
+    const Vec2 left_bar{-1.0f, 360.0f};
+    if (!present.contains({0.0f, 0.0f}) || present.contains(far_edge) || present.contains(far_corner)) {
+        throw std::runtime_error("Midas self-check: present-rect half-open contains docs drifted");
+    }
+    if (!present.contains_inclusive({0.0f, 0.0f}) || !present.contains_inclusive(far_edge) ||
+        !present.contains_inclusive(far_corner) || !present.contains_inclusive({640.0f, 720.0f}) ||
+        present.contains_inclusive(top_bar) || present.contains_inclusive(bottom_bar) ||
+        present.contains_inclusive(left_bar) ||
+        present.contains_inclusive({std::numeric_limits<float>::quiet_NaN(), 360.0f})) {
+        throw std::runtime_error("Midas self-check: letterbox present-rect inclusive test failed");
+    }
+
+    // Three spaces, no window: 2× framebuffer, matching aspect, EngineConfig
+    // logical 1280×720. Window center (640, 360) is logical center; the
+    // framebuffer center (1280, 720) is the logical *corner*. Feeding pixels
+    // to zoom_toward aims at the wrong world point.
+    {
+        constexpr float logical_w = 1280.0f;
+        constexpr float logical_h = 720.0f;
+        Camera cam;
+        cam.position = {logical_w * 0.5f, logical_h * 0.5f};
+        cam.zoom = 1.0f;
+        const Vec2 logical_mouse{logical_w * 0.5f, logical_h * 0.5f};
+        const Vec2 pixel_mouse{logical_w, logical_h};
+        const Vec2 window_half{logical_w * 0.25f, logical_h * 0.25f};
+        const Vec2 world_logical = cam.screen_to_world(logical_mouse, logical_w, logical_h);
+        const Vec2 world_pixel = cam.screen_to_world(pixel_mouse, logical_w, logical_h);
+        const Vec2 world_window = cam.screen_to_world(window_half, logical_w, logical_h);
+        if (std::abs(world_logical.x - cam.position.x) > 0.01f ||
+            std::abs(world_logical.y - cam.position.y) > 0.01f ||
+            std::abs(world_pixel.x - world_logical.x) < 1.0f ||
+            std::abs(world_window.x - world_logical.x) < 1.0f) {
+            throw std::runtime_error(
+                "Midas self-check: logical/window/pixel mouse spaces should not be interchangeable");
+        }
+        const Vec2 under = cam.screen_to_world(logical_mouse, logical_w, logical_h);
+        cam.zoom_toward(logical_mouse, 2.0f, logical_w, logical_h);
+        const Vec2 still = cam.screen_to_world(logical_mouse, logical_w, logical_h);
+        if (std::abs(still.x - under.x) > 0.05f || std::abs(still.y - under.y) > 0.05f ||
+            std::abs(cam.zoom - 2.0f) > 0.0f) {
+            throw std::runtime_error(
+                "Midas self-check: zoom_toward in logical space should keep the cursor's world point");
+        }
+    }
+
+    {
+        Cooldown cooldown;
+        if (!cooldown.ready() || cooldown.remaining != 0.0f) {
+            throw std::runtime_error("Midas self-check: Cooldown should start ready");
+        }
+        cooldown.start(3.0f);
+        if (cooldown.ready() || std::abs(cooldown.remaining - 3.0f) > 0.0f) {
+            throw std::runtime_error("Midas self-check: Cooldown::start should arm remaining");
+        }
+        cooldown.tick(1.0f);
+        cooldown.tick(1.0f);
+        if (cooldown.ready() || std::abs(cooldown.remaining - 1.0f) > 0.0f) {
+            throw std::runtime_error("Midas self-check: Cooldown should need three 1s ticks");
+        }
+        cooldown.tick(1.0f);
+        if (!cooldown.ready() || cooldown.remaining != 0.0f) {
+            throw std::runtime_error("Midas self-check: Cooldown should expire after its duration");
+        }
+        cooldown.start(1.0f);
+        cooldown.tick(std::numeric_limits<float>::quiet_NaN());
+        cooldown.tick(-0.5f);
+        if (std::abs(cooldown.remaining - 1.0f) > 0.0f) {
+            throw std::runtime_error("Midas self-check: Cooldown should ignore non-positive/NaN dt");
+        }
+        cooldown.start(std::numeric_limits<float>::quiet_NaN());
+        if (!cooldown.ready() || cooldown.remaining != 0.0f) {
+            throw std::runtime_error("Midas self-check: Cooldown::start(NaN) should stay ready");
+        }
+        cooldown.start(-2.0f);
+        if (!cooldown.ready()) {
+            throw std::runtime_error("Midas self-check: Cooldown::start of a non-positive duration should stay ready");
+        }
+        cooldown.start(0.25f);
+        cooldown.tick(1.0f);
+        if (!cooldown.ready() || cooldown.remaining != 0.0f) {
+            throw std::runtime_error("Midas self-check: Cooldown should clamp remaining at 0");
+        }
     }
 
     const Rect pad{10.0f, 20.0f, 30.0f, 40.0f};
@@ -472,9 +568,10 @@ void apply_camera_controls(midas::Engine& engine, midas::Camera& camera) {
     if (input.wheel_y() != 0.0f) {
         const midas::Vec2 mouse = input.mouse_position();
         const midas::Rect logical_view{0.0f, 0.0f, viewport_w, viewport_h};
-        // Letterbox bars map to logical coords outside the present rect.
-        // Zoom toward those points would pin an off-screen world location.
-        if (logical_view.contains(mouse)) {
+        // SDL maps drawable content onto the closed logical rect
+        // `[0, logical_w] × [0, logical_h]`. Half-open `contains` would skip
+        // wheel zoom at the right/bottom edges (those are not letterbox bars).
+        if (logical_view.contains_inclusive(mouse)) {
             constexpr float wheel_step = 1.15f;
             camera.zoom_toward(mouse, std::pow(wheel_step, input.wheel_y()), viewport_w, viewport_h);
         }
@@ -599,7 +696,8 @@ int main(int argc, char** argv) {
         if (smoke_ticks > 0) {
             std::cerr << "Midas: smoke completed " << smoke_ticks << " ticks (" << scene.entities.size()
                       << " entities, " << std::fixed << std::setprecision(0)
-                      << engine.time().frames_per_second() << " fps, camera/AABB self-check ok)\n";
+                      << engine.time().frames_per_second()
+                      << " fps, camera/AABB/cooldown self-check ok)\n";
         }
         return status;
     } catch (const std::exception& ex) {

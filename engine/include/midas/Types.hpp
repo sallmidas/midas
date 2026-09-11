@@ -124,8 +124,10 @@ constexpr Vec2 operator*(float scale, Vec2 vec) noexcept {
 /// top-left, `w`/`h` extending right and down (same as SDL). Keep `w` and `h`
 /// non-negative.
 ///
-/// `contains` is half-open: `[x, x+w) × [y, y+h)`. `overlaps` uses the same
-/// edges — rectangles that only share a boundary do not overlap, and a
+/// `contains` is half-open: `[x, x+w) × [y, y+h)`. `contains_inclusive` is
+/// closed (`[x, x+w] × [y, y+h]`) — letterbox present bounds, where the far
+/// edges are still the view. `overlaps` uses the same half-open edges as
+/// `contains` — rectangles that only share a boundary do not overlap, and a
 /// zero-size rect contains nothing and overlaps nothing.
 struct Rect {
     float x{};
@@ -143,6 +145,13 @@ struct Rect {
 
     [[nodiscard]] constexpr bool contains(Vec2 point) const noexcept {
         return point.x >= x && point.x < x + w && point.y >= y && point.y < y + h;
+    }
+
+    /// Closed test: `[x, x+w] × [y, y+h]`. SDL letterbox maps the drawable
+    /// content onto that closed logical rect (far edges are still the view,
+    /// not bars). Collision stays on half-open `contains`.
+    [[nodiscard]] constexpr bool contains_inclusive(Vec2 point) const noexcept {
+        return point.x >= x && point.x <= x + w && point.y >= y && point.y <= y + h;
     }
 
     [[nodiscard]] constexpr bool overlaps(const Rect& other) const noexcept {

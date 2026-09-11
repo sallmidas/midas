@@ -2,7 +2,6 @@
 
 #include "internal/Sdl.hpp"
 
-#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -301,7 +300,7 @@ void Input::handle_native_event(const void* native_event) noexcept {
             if (!impl_->focused || !std::isfinite(event.wheel.y)) {
                 break;
             }
-            impl_->wheel_y = std::clamp(impl_->wheel_y + event.wheel.y, -kMaxWheelY, kMaxWheelY);
+            impl_->wheel_y = clamp(impl_->wheel_y + event.wheel.y, -kMaxWheelY, kMaxWheelY);
             break;
         default:
             break;
@@ -327,8 +326,8 @@ void Input::set_mouse_position(float x, float y) noexcept {
         }
         return;
     }
-    impl_->mouse_dx = std::clamp(x - impl_->prev_mouse_x, -kMaxMouseDelta, kMaxMouseDelta);
-    impl_->mouse_dy = std::clamp(y - impl_->prev_mouse_y, -kMaxMouseDelta, kMaxMouseDelta);
+    impl_->mouse_dx = clamp(x - impl_->prev_mouse_x, -kMaxMouseDelta, kMaxMouseDelta);
+    impl_->mouse_dy = clamp(y - impl_->prev_mouse_y, -kMaxMouseDelta, kMaxMouseDelta);
 }
 
 void Input::request_quit() noexcept {

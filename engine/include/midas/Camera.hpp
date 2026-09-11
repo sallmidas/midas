@@ -2,7 +2,6 @@
 
 #include <midas/Types.hpp>
 
-#include <algorithm>
 #include <cmath>
 
 namespace midas {
@@ -11,16 +10,16 @@ namespace midas {
 ///
 /// Zoom is a **uniform** scale, so the visible world size is
 /// `(viewport_w / zoom)` by `(viewport_h / zoom)`. That keeps the view
-/// aspect-correct: it matches the logical window aspect, and circles stay
+/// aspect-correct: it matches the logical present aspect, and circles stay
 /// circles. Letterboxing (see `Renderer`) handles non-matching window pixels.
 ///
 /// With `zoom == 1` and `position` at the viewport center, world units match
-/// window / logical pixels (the default the renderer starts with). Always pass
-/// `Renderer::logical_width/height` as the viewport — after a window resize
-/// those stay at the letterboxed `EngineConfig` size, while `Window::width`
-/// follows the OS client area and `Window::pixel_width` follows the
-/// framebuffer (often 2× on Retina). Mouse `zoom_toward` points come from
-/// `Input::mouse_position()` (already logical).
+/// **logical present pixels** (the default the renderer starts with). Always
+/// pass `Renderer::logical_width/height` as the viewport — after a window
+/// resize those stay at the letterboxed `EngineConfig` size, while
+/// `Window::width` follows the OS client in **window coordinates** and
+/// `Window::pixel_width` follows the framebuffer (often 2× on Retina). Mouse
+/// `zoom_toward` points come from `Input::mouse_position()` (already logical).
 ///
 /// Zoom is kept in `[min_zoom, max_zoom]`. Projection uses a sanitized zoom so
 /// a zero/NaN zoom cannot divide by zero; call `sanitize()` after writing
@@ -38,7 +37,7 @@ struct Camera {
         if (!std::isfinite(zoom) || zoom <= 0.0f) {
             return 1.0f;
         }
-        return std::clamp(zoom, min_zoom, max_zoom);
+        return clamp(zoom, min_zoom, max_zoom);
     }
 
     void clamp_zoom() noexcept {
@@ -110,7 +109,7 @@ struct Camera {
             return;
         }
 
-        const float next = std::clamp(zoom * multiplier, min_zoom, max_zoom);
+        const float next = clamp(zoom * multiplier, min_zoom, max_zoom);
         if (next == zoom) {
             return;
         }
