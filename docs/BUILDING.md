@@ -15,7 +15,7 @@ brew install cmake ninja sdl3
 
 - **CMake** 3.21 or newer (presets version 3)
 - **Ninja** (the `debug` and `release` preset generator)
-- **SDL3** via Homebrew (`brew install sdl3`), typically under `/opt/homebrew` (Apple Silicon) or `/usr/local` (Intel)
+- **SDL3** via Homebrew (`brew install sdl3`). CMake asks `brew --prefix sdl3` for the **keg** — `/opt/homebrew/opt/sdl3` on Apple Silicon, `/usr/local/opt/sdl3` on Intel. That `opt` symlink stays put across upgrades; do **not** hardcode `Cellar/sdl3/<version>` (it moves every bottle). `/opt/homebrew` and `/usr/local` are Homebrew *roots*, not the keg.
 
 Apple clang from Command Line Tools is enough (`c++` / `clang++` with `-std=c++20`).
 
@@ -112,7 +112,7 @@ cmake -S . -B build/debug -G Ninja -DCMAKE_BUILD_TYPE=Debug
 cmake --build build/debug
 ```
 
-On Linux, the sandbox `BUILD_RPATH` / `INSTALL_RPATH` is `$ORIGIN` so a shared libSDL3 placed next to the binary can be found. On macOS it includes `@executable_path` plus Homebrew prefixes.
+On Linux, the sandbox `BUILD_RPATH` / `INSTALL_RPATH` is `$ORIGIN` (plus the Homebrew keg `lib/` if `brew --prefix sdl3` succeeded) so a shared libSDL3 placed next to the binary can be found. On macOS it is `@executable_path`, then the keg `lib/` (`…/opt/sdl3/lib`), then `/opt/homebrew/lib` and `/usr/local/lib`. Homebrew bottles usually embed an absolute keg install name; rpath covers `@rpath` dylibs and a copied `libSDL3` beside the executable.
 
 Install the sandbox and its BMP (optional):
 
@@ -125,10 +125,22 @@ cmake --install build/debug --prefix /tmp/midas-install
 
 `cmake/MidasSDL3.cmake` prefers an installed SDL3 config package:
 
-1. `brew --prefix sdl3` when Homebrew is on `PATH` (macOS, or Linuxbrew)
-2. `/opt/homebrew` (Apple Silicon default prefix)
+1. `brew --prefix sdl3` when `brew` is on `PATH` (macOS Homebrew or Linux Homebrew). This is the **keg** (`$HOMEBREW_PREFIX/opt/sdl3`), not the Cellar version directory.
+2. `/opt/homebrew` (Apple Silicon Homebrew root)
 3. `/usr/local` (Intel Homebrew / manual installs)
 4. `find_package(SDL3)` on the default CMake prefix (Linux `libsdl3-dev`)
 5. FetchContent of [SDL 3.4.16](https://github.com/libsdl-org/SDL/releases/tag/release-3.4.16)
 
-Reconfigure after `brew install sdl3` (or `apt install libsdl3-dev`) so CMake can pick up the keg / package instead of the pinned tarball.
+`/usr/local` exists on most Macs even when Homebrew lives in `/opt/homebrew`. Search order is keg → Apple Silicon root → Intel root so a leftover Rosetta / Intel SDL3 cannot shadow the native keg. Homebrew’s current 3.2+ bottle is enough (HUD needs `SDL_RenderDebugText`); FetchContent is pinned to 3.4.16 only when no config package is found.
+
+Reconfigure after `brew install sdl3` (or `apt install libsdl3-dev`) so CMake can pick up the keg / package instead of the pinned tarball. A `dyld: Library not loaded: libSDL3` on macOS usually means configure ran before the keg existed, or CMake is still using a FetchContent tree — wipe `build/` and configure again.
+
+## macOS Retina / high-DPI
+
+The window is created `SDL_WINDOW_HIGH_PIXEL_DENSITY`. Interactive mode logs `logical / window / pixels / density` once at startup so the three spaces are visible:
+
+- **Matching 16:9 on Retina** (typical Apple Silicon): `pixel_density()` is often 2 — window 1280×720, framebuffer 2560×1440, logical present still 1280×720. Aspect matches, so there are **no letterbox bars**. Window center is logical center; framebuffer center is the logical *corner*. Do not multiply mouse coordinates by `pixel_density()` and do not pass window or pixel size to `Camera::zoom_toward`.
+- **Mismatched aspect** (resized window, odd display): black bars pad the extra drawable. Wheel zoom uses the closed present rect — far edges still zoom; only the bars are skipped.
+- **Moving between Retina and 1× displays** fires `DISPLAY_SCALE_CHANGED`. The engine re-applies letterbox and zeros `mouse_delta` so a right-drag pan cannot jump.
+
+`--smoke` skips the size-log line and does not call `SDL_RenderCoordinatesFromWindow` (that converter needs a renderer and stays interactive-only). See [ARCHITECTURE.md](ARCHITECTURE.md) “Three coordinate spaces”.
