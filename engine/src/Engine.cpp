@@ -1,5 +1,6 @@
 #include <midas/Engine.hpp>
 
+#include "internal/RendererNative.hpp"
 #include "internal/Sdl.hpp"
 
 #include <cstdint>
@@ -87,9 +88,24 @@ bool Engine::is_running() const noexcept {
 }
 
 void Engine::pump_events() {
+    auto* sdl_renderer = impl_->renderer.native() != nullptr ? impl_->renderer.native()->renderer : nullptr;
+
     SDL_Event event{};
     while (SDL_PollEvent(&event)) {
+        if (sdl_renderer != nullptr) {
+            (void)SDL_ConvertEventToRenderCoordinates(sdl_renderer, &event);
+        }
         impl_->input.handle_native_event(&event);
+    }
+
+    if (sdl_renderer != nullptr) {
+        float mouse_x = 0.0f;
+        float mouse_y = 0.0f;
+        (void)SDL_GetMouseState(&mouse_x, &mouse_y);
+        float logical_x = mouse_x;
+        float logical_y = mouse_y;
+        (void)SDL_RenderCoordinatesFromWindow(sdl_renderer, mouse_x, mouse_y, &logical_x, &logical_y);
+        impl_->input.set_mouse_position(logical_x, logical_y);
     }
 }
 

@@ -4,6 +4,7 @@ add_library(midas
     src/Input.cpp
     src/Time.cpp
     src/Renderer.cpp
+    src/Texture.cpp
 )
 
 add_library(midas::midas ALIAS midas)

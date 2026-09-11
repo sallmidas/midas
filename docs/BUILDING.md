@@ -34,6 +34,8 @@ The debug tree is `build/debug/`. The sandbox binary is:
 ./build/debug/bin/midas_sandbox
 ```
 
+CMake copies `apps/sandbox/assets/` next to that binary (`build/debug/bin/assets/`), including the demo BMP sprite.
+
 Release is the same flow with optimizations:
 
 ```bash
@@ -46,7 +48,16 @@ cmake --build --preset release
 
 ## Run
 
-Close the window or press **Esc** to quit.
+The sandbox clears to charcoal, draws a solid gold square, and draws a textured checkerboard quad beside it.
+
+| Input | Action |
+| --- | --- |
+| **Esc** or close the window | Quit |
+| **WASD** / arrow keys | Pan the camera |
+| Right mouse drag | Pan the camera |
+| **Q** / **E** | Zoom out / in (view center) |
+| Mouse wheel | Zoom toward the cursor |
+| **Space** | Reset pan and zoom |
 
 Headless / CI smoke (a few 60 Hz ticks, then exit):
 
@@ -54,7 +65,7 @@ Headless / CI smoke (a few 60 Hz ticks, then exit):
 SDL_VIDEODRIVER=dummy ./build/debug/bin/midas_sandbox --smoke
 ```
 
-`MIDAS_SMOKE_FRAMES` is an alternative to `--smoke` (must be a positive integer).
+`MIDAS_SMOKE_FRAMES` is an alternative to `--smoke` (must be a positive integer). If the BMP is missing, the sandbox generates the same checkerboard on the CPU and uploads it with `create_texture`.
 
 ## CMake presets
 

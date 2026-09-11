@@ -1,5 +1,7 @@
 #pragma once
 
+#include <midas/Types.hpp>
+
 #include <memory>
 
 namespace midas {
@@ -12,13 +14,25 @@ enum class Key {
     A,
     S,
     D,
+    Q,
+    E,
     Left,
     Right,
     Up,
     Down,
 };
 
-/// Keyboard snapshot for the current tick. `key_pressed` is an edge (down this tick).
+enum class MouseButton {
+    Left,
+    Right,
+    Middle,
+};
+
+/// Keyboard and mouse snapshot for the current tick.
+///
+/// `key_pressed` / `mouse_pressed` are edges (down this tick, up last tick).
+/// Mouse position is in logical render coordinates (same space as unzoomed
+/// world units when the camera is at identity).
 class Input {
 public:
     Input(const Input&) = delete;
@@ -31,6 +45,12 @@ public:
     [[nodiscard]] bool key_pressed(Key key) const noexcept;
     [[nodiscard]] bool quit_requested() const noexcept;
 
+    [[nodiscard]] Vec2 mouse_position() const noexcept;
+    [[nodiscard]] Vec2 mouse_delta() const noexcept;
+    [[nodiscard]] float wheel_y() const noexcept;
+    [[nodiscard]] bool mouse_down(MouseButton button) const noexcept;
+    [[nodiscard]] bool mouse_pressed(MouseButton button) const noexcept;
+
 private:
     friend class Engine;
 
@@ -38,6 +58,7 @@ private:
 
     void begin_frame() noexcept;
     void handle_native_event(const void* native_event) noexcept;
+    void set_mouse_position(float x, float y) noexcept;
     void request_quit() noexcept;
 
     struct Impl;

@@ -16,6 +16,13 @@ set_target_properties(midas_sandbox PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 )
 
+add_custom_command(TARGET midas_sandbox POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/assets"
+        "$<TARGET_FILE_DIR:midas_sandbox>/assets"
+    COMMENT "Copy sandbox assets next to midas_sandbox"
+)
+
 # Homebrew's libSDL3.dylib when running from the build tree (Apple Silicon / Intel).
 if(APPLE)
     set_target_properties(midas_sandbox PROPERTIES

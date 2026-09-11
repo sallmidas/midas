@@ -1,13 +1,15 @@
 # Midas
 
-Midas is a C++20 game engine. This repository is the initial scaffold: a small public API, an SDL3 window/renderer, a fixed 60 Hz loop, and a sandbox that clears the screen and draws a gold square.
+Midas is a C++20 game engine. The public API covers a window, input, a fixed 60 Hz loop, a 2D renderer with textures and an orthographic camera, and lightweight entity/transform helpers. The sandbox draws a gold square plus a textured quad you can pan and zoom.
 
 ## Layout
 
 ```
-engine/include/midas/   Public headers (Engine, Window, Input, Time, Renderer)
+engine/include/midas/   Public headers (Engine, Window, Input, Time, Renderer,
+                        Texture, Camera, Entity). SDL stays out of these files.
 engine/src/             Engine implementation (SDL3 kept private)
-apps/sandbox/           Demo app: window, clear, gold square, Esc/quit
+apps/sandbox/           Demo: gold square, textured sprite, camera, Esc/quit
+apps/sandbox/assets/    Demo BMP copied next to the sandbox binary
 docs/                   Architecture and macOS Apple Silicon build notes
 cmake/                  Homebrew SDL3 discovery, FetchContent fallback
 ```
@@ -25,4 +27,6 @@ A `release` preset is the same commands with `release` instead of `debug`.
 
 If SDL3 is not installed, CMake fetches **SDL3 3.4.16** automatically.
 
-Press **Esc** or close the window to quit. See [docs/BUILDING.md](docs/BUILDING.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+**Esc** or close the window to quit. **WASD** / arrows (or right-drag) pan, **Q**/**E** or the mouse wheel zoom, **Space** resets the camera.
+
+See [docs/BUILDING.md](docs/BUILDING.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
