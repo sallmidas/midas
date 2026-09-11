@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cmath>
-#include <cstdint>
 
 namespace midas {
 
@@ -98,18 +97,21 @@ struct Vec2 {
     }
 
     /// `x*x + y*y`. Use for length comparisons so you do not need `hypot`.
-    /// `length()` stays the accurate magnitude (NaN-safe via `std::hypot`).
+    /// `length()` stays the accurate magnitude (`std::hypot`).
     [[nodiscard]] constexpr float length_squared() const noexcept {
         return x * x + y * y;
     }
 
+    /// `std::hypot(x, y)`. Prefer `length_squared()` when you only need to compare.
     [[nodiscard]] float length() const noexcept {
         return std::hypot(x, y);
     }
 
+    /// Unit vector, or `{0, 0}` if the length is zero / non-finite (NaN, Inf).
+    /// WASD pan uses this so a degenerate or NaN direction cannot fling the camera.
     [[nodiscard]] Vec2 normalized_or_zero() const noexcept {
         const float len = length();
-        if (len <= 0.0f) {
+        if (!std::isfinite(len) || len <= 0.0f) {
             return {};
         }
         return *this / len;

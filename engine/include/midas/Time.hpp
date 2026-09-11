@@ -27,10 +27,15 @@ public:
     Time& operator=(Time&&) = delete;
     ~Time();
 
+    /// Always `tick_seconds` (1/60). Use for gameplay motion, including `Cooldown`.
     [[nodiscard]] double delta_seconds() const noexcept;
+    /// Wall-clock seconds since `run()` started (0 before `run`).
     [[nodiscard]] double elapsed_seconds() const noexcept;
+    /// Wall time of the previous completed tick (work + 60 Hz sleep). HUD, not motion.
     [[nodiscard]] double frame_seconds() const noexcept;
+    /// `1 / frame_seconds()`, or 0 if no tick has completed yet / non-finite.
     [[nodiscard]] double frames_per_second() const noexcept;
+    /// Ticks completed in the current `run()` (0 after `reset`).
     [[nodiscard]] std::uint64_t tick_index() const noexcept;
 
 private:

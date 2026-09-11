@@ -4,6 +4,7 @@
 #include <midas/Texture.hpp>
 #include <midas/Types.hpp>
 
+#include <cstdint>
 #include <memory>
 #include <span>
 #include <string_view>

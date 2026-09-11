@@ -25,7 +25,8 @@ class Renderer;
 /// Never pass window or pixel size to `Camera` / `zoom_toward`. Never multiply
 /// mouse coordinates by `pixel_density()` — the engine already maps window
 /// coords → logical present pixels (letterbox + DPI). The SDL converter needs
-/// a renderer; `--smoke` checks the three-space policy without a window.
+/// a renderer; the sandbox math self-check covers mixing spaces without
+/// calling it (dummy `--smoke` still creates a window).
 class Window {
 public:
     Window(const Window&) = delete;
@@ -34,6 +35,7 @@ public:
     Window& operator=(Window&&) = delete;
     ~Window();
 
+    /// Valid while this `Window` lives (it views the owned title string).
     [[nodiscard]] std::string_view title() const noexcept;
     [[nodiscard]] int width() const noexcept;
     [[nodiscard]] int height() const noexcept;

@@ -99,9 +99,9 @@ std::vector<std::uint8_t> make_checkerboard_rgba(
         throw std::runtime_error("Midas checkerboard cell size must be positive");
     }
 
-    auto to_u8 = [](float channel) -> std::uint8_t {
+    auto to_u8 = [](float channel, float non_finite_fallback) -> std::uint8_t {
         if (!std::isfinite(channel)) {
-            return 0;
+            channel = non_finite_fallback;
         }
         return static_cast<std::uint8_t>(clamp01(channel) * 255.0f + 0.5f);
     };
@@ -114,10 +114,10 @@ std::vector<std::uint8_t> make_checkerboard_rgba(
             const std::size_t i = (static_cast<std::size_t>(y) * static_cast<std::size_t>(width) +
                                    static_cast<std::size_t>(x)) *
                                   4;
-            pixels[i + 0] = to_u8(color.r);
-            pixels[i + 1] = to_u8(color.g);
-            pixels[i + 2] = to_u8(color.b);
-            pixels[i + 3] = to_u8(color.a);
+            pixels[i + 0] = to_u8(color.r, 0.0f);
+            pixels[i + 1] = to_u8(color.g, 0.0f);
+            pixels[i + 2] = to_u8(color.b, 0.0f);
+            pixels[i + 3] = to_u8(color.a, 1.0f);
         }
     }
     return pixels;

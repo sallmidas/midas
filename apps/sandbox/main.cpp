@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
@@ -44,14 +45,11 @@ int parse_smoke_ticks(int argc, char** argv) {
     return 0;
 }
 
-/// Header-only math: camera invertibility, zoom clamps, AABB edges,
-/// Rect::expanded/inset / contains_inclusive, Transform::then
-/// identity/associativity, Color::lerp, Vec2::length_squared, clamp/clamp01,
-/// Cooldown, and the three-space mouse policy (logical vs window vs pixels).
-/// Runs before SDL so a broken Camera/Rect cannot hide behind a missing GPU.
-/// `SDL_RenderCoordinatesFromWindow` itself needs a renderer — that mapping
-/// stays interactive-only; smoke checks the policy and the cost of mixing
-/// spaces.
+/// Header-only math, before SDL so a broken Camera/Rect cannot hide behind a
+/// missing GPU. Covers the constexpr/NaN contracts on clamp, Vec2, Color, Rect,
+/// Camera, Transform, Entity, Cooldown, and CPU `make_checkerboard_rgba`.
+/// `--smoke` requires the BMP, so the checkerboard fallback would otherwise
+/// never run. `SDL_RenderCoordinatesFromWindow` stays interactive-only.
 void self_check_math() {
     using midas::Camera;
     using midas::Cooldown;
@@ -62,6 +60,15 @@ void self_check_math() {
     using midas::clamp;
     using midas::clamp01;
 
+    static_assert(clamp(0.25f, 0.0f, 1.0f) == 0.25f);
+    static_assert(clamp(-2.0f, 0.0f, 1.0f) == 0.0f);
+    static_assert(clamp(4.0f, 0.0f, 1.0f) == 1.0f);
+    static_assert(clamp01(1.5f) == 1.0f);
+    static_assert(clamp(3.0f, 5.0f, 1.0f) == 5.0f);
+    static_assert(midas::Rect{0.0f, 0.0f, 10.0f, 10.0f}.contains({0.0f, 0.0f}));
+    static_assert(!midas::Rect{0.0f, 0.0f, 10.0f, 10.0f}.contains({10.0f, 10.0f}));
+    static_assert(midas::Rect{0.0f, 0.0f, 10.0f, 10.0f}.contains_inclusive({10.0f, 10.0f}));
+
     if (clamp(0.25f, 0.0f, 1.0f) != 0.25f || clamp(-2.0f, 0.0f, 1.0f) != 0.0f ||
         clamp(4.0f, 0.0f, 1.0f) != 1.0f || clamp01(1.5f) != 1.0f ||
         clamp01(std::numeric_limits<float>::quiet_NaN()) != 0.0f ||
@@ -70,10 +77,17 @@ void self_check_math() {
     }
 
     const Vec2 three_four{3.0f, 4.0f};
+    const Vec2 unit = three_four.normalized_or_zero();
+    const Vec2 nan_dir{std::numeric_limits<float>::quiet_NaN(), 1.0f};
+    const Vec2 inf_dir{std::numeric_limits<float>::infinity(), 0.0f};
+    const Vec2 zero_dir = Vec2{}.normalized_or_zero();
     if (std::abs(three_four.length_squared() - 25.0f) > 0.001f ||
         std::abs(three_four.length() - 5.0f) > 0.001f ||
-        Vec2{}.length_squared() != 0.0f) {
-        throw std::runtime_error("Midas self-check: Vec2::length_squared failed");
+        Vec2{}.length_squared() != 0.0f || zero_dir.x != 0.0f || zero_dir.y != 0.0f ||
+        std::abs(unit.x - 0.6f) > 0.001f || std::abs(unit.y - 0.8f) > 0.001f ||
+        nan_dir.normalized_or_zero().x != 0.0f || nan_dir.normalized_or_zero().y != 0.0f ||
+        inf_dir.normalized_or_zero().x != 0.0f || inf_dir.normalized_or_zero().y != 0.0f) {
+        throw std::runtime_error("Midas self-check: Vec2 length / normalized_or_zero failed");
     }
 
     Camera camera;
@@ -279,6 +293,14 @@ void self_check_math() {
         if (!cooldown.ready() || cooldown.remaining != 0.0f) {
             throw std::runtime_error("Midas self-check: Cooldown::tick should snap Inf remaining to 0");
         }
+        cooldown.remaining = -1.0f;
+        if (!cooldown.ready()) {
+            throw std::runtime_error("Midas self-check: Cooldown negative remaining should already be ready");
+        }
+        cooldown.tick(0.1f);
+        if (!cooldown.ready() || cooldown.remaining != 0.0f) {
+            throw std::runtime_error("Midas self-check: Cooldown::tick should snap negative remaining to 0");
+        }
     }
 
     const Rect pad{10.0f, 20.0f, 30.0f, 40.0f};
@@ -376,6 +398,34 @@ void self_check_math() {
         std::abs(mid.r - (gold.r + bronze.r) * 0.5f) > 0.001f ||
         std::abs(mid.a - 1.0f) > 0.001f) {
         throw std::runtime_error("Midas self-check: Color::lerp failed");
+    }
+
+    // CPU upload path: --smoke requires the BMP, so this would otherwise never run.
+    {
+        const auto px =
+            midas::make_checkerboard_rgba(2, 2, Color::gold(), Color::bronze(), 1);
+        if (px.size() != 16) {
+            throw std::runtime_error("Midas self-check: checkerboard byte count failed");
+        }
+        const auto to_u8 = [](float channel) -> std::uint8_t {
+            return static_cast<std::uint8_t>(channel * 255.0f + 0.5f);
+        };
+        // cell_size 1: (0,0) even/gold, (1,0) odd/bronze
+        if (px[0] != to_u8(Color::gold().r) || px[4] != to_u8(Color::bronze().r) ||
+            px[3] != 255 || px[7] != 255) {
+            throw std::runtime_error("Midas self-check: checkerboard pattern / opaque alpha failed");
+        }
+        Color nan_alpha = Color::white();
+        nan_alpha.a = std::numeric_limits<float>::quiet_NaN();
+        const auto with_nan_a = midas::make_checkerboard_rgba(1, 1, nan_alpha, nan_alpha, 1);
+        if (with_nan_a.size() != 4 || with_nan_a[3] != 255) {
+            throw std::runtime_error("Midas self-check: checkerboard NaN alpha should fall back to 1");
+        }
+        Color nan_rgb{std::numeric_limits<float>::quiet_NaN(), 0.0f, 0.0f, 1.0f};
+        const auto with_nan_r = midas::make_checkerboard_rgba(1, 1, nan_rgb, nan_rgb, 1);
+        if (with_nan_r[0] != 0) {
+            throw std::runtime_error("Midas self-check: checkerboard NaN RGB should fall back to 0");
+        }
     }
 }
 
@@ -636,8 +686,8 @@ int main(int argc, char** argv) {
 
         midas::EngineConfig config;
         config.title = "Midas";
-        config.width = 1280;
-        config.height = 720;
+        config.width = static_cast<int>(kViewportW);
+        config.height = static_cast<int>(kViewportH);
         config.max_ticks = smoke_ticks;
 
         // Engine first, then GPU textures: C++ destroys in reverse, which is
@@ -704,7 +754,7 @@ int main(int argc, char** argv) {
 
         if (smoke_ticks > 0) {
             std::cerr << "Midas: smoke completed " << smoke_ticks << " ticks (" << scene.entities.size()
-                      << " entities, camera/AABB/cooldown self-check ok)\n";
+                      << " entities, math self-check ok)\n";
         }
         return status;
     } catch (const std::exception& ex) {

@@ -86,7 +86,7 @@ The sandbox clears to charcoal and draws a small gold/bronze scene: a tiled floo
 
 Textures use **nearest-neighbor** sampling so the BMP stays sharp when zoomed.
 
-Headless / CI smoke (a few 60 Hz ticks, then exit). This path also runs camera, AABB, `Rect::expanded`/`inset`/`contains_inclusive`, `Transform::then`, `Color::lerp`, `clamp`/`clamp01`, `Vec2::length_squared`, `Cooldown`, and the three-space mouse policy self-checks and fails if the BMP was not copied next to the binary. It does **not** require the debug HUD, does **not** print the interactive logical/window/pixel size line, and does **not** call `SDL_RenderCoordinatesFromWindow` (that converter needs a renderer and stays interactive-only):
+Headless / CI smoke (a few 60 Hz ticks, then exit). This path runs a header-only math self-check **before** SDL (clamp, Vec2 including `normalized_or_zero`, Color, Rect AABB / `expanded` / `contains_inclusive`, Camera, Transform, Entity, Cooldown, CPU `make_checkerboard_rgba`, three-space mouse policy) and fails if the BMP was not copied next to the binary. `--smoke` always loads that BMP, so the checkerboard fallback is exercised only by the CPU self-check (and by an interactive run with a missing file). It does **not** require the debug HUD, does **not** print the interactive logical/window/pixel size line, and does **not** call `SDL_RenderCoordinatesFromWindow` (that converter needs a renderer and stays interactive-only):
 
 ```bash
 SDL_VIDEODRIVER=dummy ./build/debug/bin/midas_sandbox --smoke

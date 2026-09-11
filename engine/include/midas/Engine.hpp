@@ -20,7 +20,8 @@ struct EngineConfig {
     int max_ticks{0};
 };
 
-/// Owns the four engine modules and the 60 Hz tick loop.
+/// Owns the four engine modules (`Window`, `Input`, `Time`, `Renderer`) and
+/// the 60 Hz tick loop.
 ///
 /// Copies/moves are deleted because the SDL video subsystem and native window are
 /// unique. Pass a tick callback to `run()`; call `request_quit()` (or press Esc
@@ -30,7 +31,11 @@ struct EngineConfig {
 /// `Renderer` then `Window` then `SDL_Quit`. Destroy game `Texture`s before
 /// this `Engine`. If a texture outlives the renderer, its destructor is a
 /// no-op on the GPU handle (the renderer shares a small alive-flag; each
-/// `Texture` holds a typed copy of that flag).
+/// `Texture` holds a `shared_ptr` to that flag — `shared_ptr<void>` at the
+/// private constructor so `Texture.hpp` stays SDL-free).
+///
+/// TODO: 2D audio (SDL3 audio device) is a later module; this loop is still
+/// video + input.
 class Engine {
 public:
     explicit Engine(EngineConfig config = {});
@@ -58,6 +63,9 @@ public:
     void request_quit() noexcept;
     [[nodiscard]] bool is_running() const noexcept;
 
+    /// 60 Hz loop: pump events, `on_tick`, sleep the remainder of 1/60 s.
+    /// Stops on `request_quit`, close box, or `EngineConfig::max_ticks`.
+    /// Returns 0 on a normal exit (throws if a tick or SDL call fails).
     int run(std::function<void(Engine&)> on_tick);
 
 private:

@@ -14,8 +14,10 @@ namespace midas {
 /// circles. Letterboxing (see `Renderer`) handles non-matching window pixels.
 ///
 /// With `zoom == 1` and `position` at the viewport center, world units match
-/// **logical present pixels** (the default the renderer starts with). Always
-/// pass `Renderer::logical_width/height` as the viewport — after a window
+/// **logical present pixels** (the default the renderer starts with). A default
+/// `Camera{}` is zoom 1 at world origin — that is *not* the identity view.
+/// Copy `Renderer::camera()` for the starting view. Always pass
+/// `Renderer::logical_width/height` as the viewport — after a window
 /// resize those stay at the letterboxed `EngineConfig` size, while
 /// `Window::width` follows the OS client in **window coordinates** and
 /// `Window::pixel_width` follows the framebuffer (often 2× on Retina). Mouse
@@ -63,18 +65,21 @@ struct Camera {
         };
     }
 
+    /// World point → logical present pixels.
     [[nodiscard]] Vec2 world_to_screen(Vec2 world, float viewport_w, float viewport_h) const noexcept {
         const float z = clamped_zoom();
         const Vec2 half{viewport_w * 0.5f, viewport_h * 0.5f};
         return (world - finite_position()) * z + half;
     }
 
+    /// Logical present pixels → world point.
     [[nodiscard]] Vec2 screen_to_world(Vec2 screen, float viewport_w, float viewport_h) const noexcept {
         const float z = clamped_zoom();
         const Vec2 half{viewport_w * 0.5f, viewport_h * 0.5f};
         return (screen - half) / z + finite_position();
     }
 
+    /// World AABB → logical present pixels (fills and sprites share this scale).
     [[nodiscard]] Rect project(const Rect& world, float viewport_w, float viewport_h) const noexcept {
         const float z = clamped_zoom();
         const Vec2 top_left = world_to_screen({world.x, world.y}, viewport_w, viewport_h);
