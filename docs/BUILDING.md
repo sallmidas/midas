@@ -31,7 +31,7 @@ sudo apt install cmake ninja-build g++ pkg-config
 CC=gcc CXX=g++ cmake --preset debug
 ```
 
-SDL3 is optional: many distros still ship only SDL2, in which case CMake downloads SDL3 via FetchContent. If your distro has SDL3 3.x:
+SDL3 is optional: many distros still ship only SDL2, in which case CMake downloads SDL3 via FetchContent. If your distro has SDL3 **3.2 or newer** (needed for the debug HUD):
 
 ```bash
 sudo apt install libsdl3-dev
@@ -72,7 +72,7 @@ cmake --build --preset release
 
 ## Run
 
-The sandbox clears to charcoal and draws a small gold/bronze scene: a tiled floor strip, a solid gold square, the BMP sprite, a gold-tinted copy of that sprite, a half-scale child sprite (`Transform::then`), and corner markers so pan/zoom has landmarks.
+The sandbox clears to charcoal and draws a small gold/bronze scene: a tiled floor strip, a solid gold square, the BMP sprite, a gold-tinted copy of that sprite, a half-scale child sprite (`Transform::then`), and corner markers so pan/zoom has landmarks. A screen-space HUD (top-left) shows the fixed 60 Hz `dt`, wall-clock FPS, camera position, and zoom — it does not pan with the world.
 
 | Input | Action |
 | --- | --- |
@@ -89,7 +89,8 @@ Headless / CI smoke (a few 60 Hz ticks, then exit). This path also runs camera a
 
 ```bash
 SDL_VIDEODRIVER=dummy ./build/debug/bin/midas_sandbox --smoke
-ctest --test-dir build/debug --output-on-failure
+ctest --preset debug
+# equivalent: ctest --test-dir build/debug --output-on-failure
 ```
 
 `MIDAS_SMOKE_FRAMES` is an alternative to `--smoke` (must be a positive integer).
@@ -103,7 +104,7 @@ If you run the sandbox **without** `--smoke` and the BMP is missing, it prints e
 | `debug` | Debug | Ninja | `build/debug` |
 | `release` | Release | Ninja | `build/release` |
 
-Both presets set `CMAKE_EXPORT_COMPILE_COMMANDS=ON`. Example without presets:
+Configure and build with `cmake --preset debug` and `cmake --build --preset debug`. After a build, `ctest --preset debug` (and `ctest --preset release`) run the dummy-video sandbox smoke. Both configure presets set `CMAKE_EXPORT_COMPILE_COMMANDS=ON`. Example without presets:
 
 ```bash
 cmake -S . -B build/debug -G Ninja -DCMAKE_BUILD_TYPE=Debug

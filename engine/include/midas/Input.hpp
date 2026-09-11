@@ -33,7 +33,9 @@ enum class MouseButton {
 /// `key_pressed` / `mouse_pressed` are edges (down this tick, up last tick).
 /// Mouse position is in logical render coordinates (same space as unzoomed
 /// world units when the camera is at identity). `mouse_delta()` is zero until
-/// the first real sample so the first tick cannot jump the camera.
+/// the first real sample, on focus gain, and while the window is unfocused, so
+/// a cursor warp cannot jump the camera. Per-tick mouse and wheel deltas are
+/// also clamped — a huge OS jump still pans/zooms a bounded amount.
 class Input {
 public:
     Input(const Input&) = delete;
@@ -51,6 +53,7 @@ public:
     [[nodiscard]] float wheel_y() const noexcept;
     [[nodiscard]] bool mouse_down(MouseButton button) const noexcept;
     [[nodiscard]] bool mouse_pressed(MouseButton button) const noexcept;
+    [[nodiscard]] bool window_focused() const noexcept;
 
 private:
     friend class Engine;
@@ -61,6 +64,7 @@ private:
     void handle_native_event(const void* native_event) noexcept;
     void set_mouse_position(float x, float y) noexcept;
     void request_quit() noexcept;
+    void release_held() noexcept;
 
     struct Impl;
     std::unique_ptr<Impl> impl_;

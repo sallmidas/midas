@@ -153,6 +153,9 @@ int Engine::run(std::function<void(Engine&)> on_tick) {
         if (elapsed < tick_ns) {
             SDL_DelayNS(tick_ns - elapsed);
         }
+        // Wall time of this tick including the 60 Hz wait (or the overrun).
+        // Gameplay still uses Time::delta_seconds() == 1/60; HUD uses this.
+        impl_->time.complete_frame(SDL_GetTicksNS() - frame_start);
     }
 
     return 0;
