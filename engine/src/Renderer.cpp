@@ -65,6 +65,12 @@ struct Renderer::Impl {
             native.renderer = nullptr;
         }
     }
+
+    Impl() = default;
+    Impl(const Impl&) = delete;
+    Impl& operator=(const Impl&) = delete;
+    Impl(Impl&&) = delete;
+    Impl& operator=(Impl&&) = delete;
 };
 
 Renderer::Renderer(Window& window) : impl_(std::make_unique<Impl>()) {
@@ -73,6 +79,9 @@ Renderer::Renderer(Window& window) : impl_(std::make_unique<Impl>()) {
         throw std::runtime_error("Midas renderer requires a native window");
     }
 
+    // Captured once from the created window (EngineConfig). OS resizes change
+    // `Window::width/height` and letterbox; these stay put so Camera/Input
+    // keep a stable logical viewport.
     impl_->logical_width = window.width();
     impl_->logical_height = window.height();
     impl_->camera.position = {static_cast<float>(impl_->logical_width) * 0.5f,
@@ -277,6 +286,25 @@ int Renderer::logical_width() const noexcept {
 
 int Renderer::logical_height() const noexcept {
     return impl_->logical_height;
+}
+
+Vec2 Renderer::logical_size() const noexcept {
+    return {static_cast<float>(impl_->logical_width),
+            static_cast<float>(impl_->logical_height)};
+}
+
+void Renderer::reapply_logical_presentation() noexcept {
+    if (impl_ == nullptr || impl_->native.renderer == nullptr) {
+        return;
+    }
+    if (impl_->logical_width <= 0 || impl_->logical_height <= 0) {
+        return;
+    }
+    // Letterbox is the EngineConfig size, not the OS window. Re-apply after a
+    // resize so a driver that drops presentation still matches Camera/Input.
+    (void)SDL_SetRenderLogicalPresentation(impl_->native.renderer, impl_->logical_width,
+                                           impl_->logical_height,
+                                           SDL_LOGICAL_PRESENTATION_LETTERBOX);
 }
 
 }  // namespace midas

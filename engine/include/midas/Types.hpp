@@ -127,6 +127,17 @@ struct Rect {
         return x < other.x + other.w && x + w > other.x && y < other.y + other.h &&
                y + h > other.y;
     }
+
+    /// Grow by `amount` on every edge (negative = shrink). A large inset can
+    /// yield a non-positive size — that rect is empty (`overlaps` / `contains`
+    /// fail). `inset(amount)` is `expanded(-amount)`.
+    [[nodiscard]] constexpr Rect expanded(float amount) const noexcept {
+        return {x - amount, y - amount, w + amount * 2.0f, h + amount * 2.0f};
+    }
+
+    [[nodiscard]] constexpr Rect inset(float amount) const noexcept {
+        return expanded(-amount);
+    }
 };
 
 }  // namespace midas

@@ -238,6 +238,7 @@ void Input::handle_native_event(const void* native_event) noexcept {
             impl_->mouse_initialized = false;
             impl_->mouse_dx = 0.0f;
             impl_->mouse_dy = 0.0f;
+            impl_->wheel_y = 0.0f;
             // Pass-2 released keys on focus loss, so a held WASD would stay
             // dead until a new KEY_DOWN. Re-read the OS so pan resumes.
             sync_held_from_device();
@@ -245,6 +246,14 @@ void Input::handle_native_event(const void* native_event) noexcept {
             // restored holds into previous so Escape/F1/Space do not fire.
             impl_->previous = impl_->down;
             impl_->mouse_previous = impl_->mouse_down;
+            break;
+        case SDL_EVENT_WINDOW_RESIZED:
+        case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+            // Letterbox mapping window→logical can jump; do not treat that as a
+            // right-drag pan delta.
+            impl_->mouse_initialized = false;
+            impl_->mouse_dx = 0.0f;
+            impl_->mouse_dy = 0.0f;
             break;
         case SDL_EVENT_WINDOW_MOUSE_LEAVE: {
             bool held = false;
@@ -265,10 +274,7 @@ void Input::handle_native_event(const void* native_event) noexcept {
         }
         case SDL_EVENT_KEY_DOWN:
         case SDL_EVENT_KEY_UP: {
-            if (event.key.repeat) {
-                break;
-            }
-            if (event.type == SDL_EVENT_KEY_DOWN && !impl_->focused) {
+            if (event.key.repeat || !impl_->focused) {
                 break;
             }
             Key key{};
@@ -280,7 +286,7 @@ void Input::handle_native_event(const void* native_event) noexcept {
         }
         case SDL_EVENT_MOUSE_BUTTON_DOWN:
         case SDL_EVENT_MOUSE_BUTTON_UP: {
-            if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && !impl_->focused) {
+            if (!impl_->focused) {
                 break;
             }
             MouseButton button{};

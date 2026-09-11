@@ -4,8 +4,10 @@ namespace midas::detail {
 
 /// Shared "is the GPU renderer still alive?" flag.
 ///
-/// `Renderer` holds one `shared_ptr`; each `Texture` copies it. Teardown is:
-///
+/// `Renderer` holds one `shared_ptr`; each `Texture` copies it (typed
+/// `shared_ptr<GpuLifetime>` in the texture impl, `shared_ptr<void>` only at
+/// the private `Texture` constructor so the public header stays SDL-free).
+/// Teardown is:
 /// 1. Game drops textures → `SDL_DestroyTexture` while the renderer lives.
 /// 2. `Renderer` sets `alive = false`, then `SDL_DestroyRenderer` (SDL also
 ///    frees leftover GPU textures).
