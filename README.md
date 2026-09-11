@@ -12,7 +12,7 @@ engine/src/             Engine implementation (SDL3 kept private)
 apps/sandbox/           Demo scene: camera, sprites, entities, Esc/quit
 apps/sandbox/assets/    Demo BMP copied next to the sandbox binary
 docs/                   Architecture and macOS / Linux build notes
-CHANGELOG.md            Fine-tune pass highlights (1–12)
+CHANGELOG.md            Fine-tune pass highlights
 cmake/                  Homebrew / system SDL3 discovery, FetchContent fallback
 ```
 

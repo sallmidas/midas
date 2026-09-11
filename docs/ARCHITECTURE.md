@@ -174,7 +174,7 @@ The sandbox locates `assets/midas_sprite.bmp` via `Engine::executable_directory(
 
 SDL3 is resolved by `cmake/MidasSDL3.cmake`:
 
-1. **Homebrew / system** — `brew --prefix sdl3` (the keg, e.g. `/opt/homebrew/opt/sdl3`), then `/opt/homebrew`, then `/usr/local` on macOS so a leftover Intel tree cannot shadow Apple Silicon; `find_package(SDL3 3.2)` on Linux (and Linux Homebrew if `brew` is on `PATH`). 3.2 is the floor (`SDL_RenderDebugText` for the HUD).
+1. **Homebrew / system** — `brew --prefix sdl3` (the keg, e.g. `/opt/homebrew/opt/sdl3`), then `/opt/homebrew`, then `/usr/local` on **macOS** so a leftover Intel tree cannot shadow Apple Silicon. Those two roots are not prepended on Linux (`/usr/local` is a common empty prefix there). `find_package(SDL3 3.2)` uses CMake’s system prefixes (`libsdl3-dev`) and Linux Homebrew if `brew` is on `PATH`. 3.2 is the floor (`SDL_RenderDebugText` for the HUD).
 2. **FetchContent** — SDL3 **3.4.16** if no 3.2+ config package is found.
 
 The engine links `SDL3::SDL3` and does not leak that include path into public headers.

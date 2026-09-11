@@ -125,13 +125,13 @@ cmake --install build/debug --prefix /tmp/midas-install
 
 `cmake/MidasSDL3.cmake` prefers an installed SDL3 config package:
 
-1. `brew --prefix sdl3` when `brew` is on `PATH` (macOS Homebrew or Linux Homebrew). This is the **keg** (`$HOMEBREW_PREFIX/opt/sdl3`), not the Cellar version directory.
-2. `/opt/homebrew` (Apple Silicon Homebrew root)
-3. `/usr/local` (Intel Homebrew / manual installs)
+1. `brew --prefix sdl3` when `brew` is on `PATH` (macOS Homebrew or Linux Homebrew). This is the **keg** (`$HOMEBREW_PREFIX/opt/sdl3`), not the Cellar version directory. No `brew` (typical Debian/Ubuntu CI) → this step is skipped and configure logs that.
+2. `/opt/homebrew` (Apple Silicon Homebrew root) — **macOS only**
+3. `/usr/local` (Intel Homebrew / manual installs) — **macOS only**. Linux images often have `/usr/local` too; it is **not** prepended there, so a leftover tree cannot skip FetchContent. CMake still searches `/usr` and `/usr/local` via its system prefixes for `libsdl3-dev`.
 4. `find_package(SDL3)` on the default CMake prefix (Linux `libsdl3-dev`)
 5. FetchContent of [SDL 3.4.16](https://github.com/libsdl-org/SDL/releases/tag/release-3.4.16)
 
-`/usr/local` exists on most Macs even when Homebrew lives in `/opt/homebrew`. Search order is keg → Apple Silicon root → Intel root so a leftover Rosetta / Intel SDL3 cannot shadow the native keg. Homebrew’s current 3.2+ bottle is enough (HUD needs `SDL_RenderDebugText`); FetchContent is pinned to 3.4.16 only when no config package is found.
+On macOS, `/usr/local` exists on most machines even when Homebrew lives in `/opt/homebrew`. Search order is keg → Apple Silicon root → Intel root so a leftover Rosetta / Intel SDL3 cannot shadow the native keg. Homebrew’s current 3.2+ bottle is enough (HUD needs `SDL_RenderDebugText`); FetchContent is pinned to 3.4.16 only when no config package is found.
 
 Reconfigure after `brew install sdl3` (or `apt install libsdl3-dev`) so CMake can pick up the keg / package instead of the pinned tarball. A `dyld: Library not loaded: libSDL3` on macOS usually means configure ran before the keg existed, or CMake is still using a FetchContent tree — wipe `build/` and configure again.
 

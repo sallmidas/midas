@@ -2,7 +2,13 @@
 
 Bullet highlights from the 2D engine fine-tunes on `main`. No 3D / ECS / editor.
 
-## Unreleased (pass 13)
+## Unreleased (pass 14)
+
+- Linux FetchContent path is unchanged by the keg-order fix: `/opt/homebrew` and `/usr/local` prepends stay macOS-only; configure logs when `brew` is absent (or the sdl3 keg is missing).
+- CHANGELOG records pass 13 as landed on `main`; README layout line no longer hardcodes a stale pass range.
+- Include `<utility>` in `Texture.cpp` (`std::move` of the GPU-lifetime pointer).
+
+## Pass 13
 
 - Homebrew SDL3 discovery matches the docs: `brew --prefix sdl3` keg first, then `/opt/homebrew`, then `/usr/local` (a leftover Intel tree can no longer shadow Apple Silicon).
 - Sandbox rpath includes the keg `lib/` when `brew` is on `PATH`.
