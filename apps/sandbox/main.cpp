@@ -169,7 +169,8 @@ LoadedSprite load_sprite(midas::Engine& engine, const char* argv0) {
     }
 
     std::cerr << "Midas: missing assets/midas_sprite.bmp\n"
-              << "  looked next to the executable (" << (engine.executable_directory() / "assets")
+              << "  looked next to the executable ("
+              << (engine.executable_directory() / "assets").string()
               << "), argv0, ./assets, and ./apps/sandbox/assets\n"
               << "  using a generated 64x64 checkerboard so the sprite path still runs\n";
 
@@ -319,7 +320,7 @@ int main(int argc, char** argv) {
         }
         if (sprite.from_bmp) {
             std::cerr << "Midas: loaded BMP " << sprite.texture.width() << "x" << sprite.texture.height()
-                      << " from " << sprite.path << '\n';
+                      << " from " << sprite.path.string() << '\n';
         }
 
         const float viewport_w = static_cast<float>(engine.renderer().logical_width());

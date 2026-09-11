@@ -25,7 +25,13 @@ Apple clang from Command Line Tools is enough (`c++` / `clang++` with `-std=c++2
 sudo apt install cmake ninja-build g++ pkg-config
 ```
 
-`clang` works as well. SDL3 is optional: many distros still ship only SDL2, in which case CMake downloads SDL3 via FetchContent. If your distro has SDL3 3.x:
+`clang` works as well. If `c++` on `PATH` is Clang but CMake cannot link `libstdc++` (a toolchain mismatch with GCC 14 internals), configure with GCC explicitly:
+
+```bash
+CC=gcc CXX=g++ cmake --preset debug
+```
+
+SDL3 is optional: many distros still ship only SDL2, in which case CMake downloads SDL3 via FetchContent. If your distro has SDL3 3.x:
 
 ```bash
 sudo apt install libsdl3-dev
