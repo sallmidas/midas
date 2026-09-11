@@ -3,6 +3,7 @@
 #include "internal/Sdl.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <stdexcept>
 #include <string>
@@ -89,6 +90,9 @@ std::vector<std::uint8_t> make_checkerboard_rgba(
     }
 
     auto to_u8 = [](float channel) -> std::uint8_t {
+        if (!std::isfinite(channel)) {
+            return 0;
+        }
         const float clamped = std::clamp(channel, 0.0f, 1.0f);
         return static_cast<std::uint8_t>(clamped * 255.0f + 0.5f);
     };

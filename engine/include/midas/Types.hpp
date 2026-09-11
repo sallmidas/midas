@@ -27,6 +27,15 @@ struct Color {
     static constexpr Color white() noexcept {
         return {1.0f, 1.0f, 1.0f, 1.0f};
     }
+
+    /// Mix `a` toward `b`. `t` is clamped to `[0, 1]` (NaN / negative → 0).
+    /// Channels are not clamped — feed `gold()` / `white()` style 0–1 colors.
+    [[nodiscard]] static constexpr Color lerp(Color a, Color b, float t) noexcept {
+        // NaN and negatives fail `t >= 0`, so they become 0 (safe mix).
+        const float u = !(t >= 0.0f) ? 0.0f : (t > 1.0f ? 1.0f : t);
+        const float v = 1.0f - u;
+        return {a.r * v + b.r * u, a.g * v + b.g * u, a.b * v + b.b * u, a.a * v + b.a * u};
+    }
 };
 
 struct Vec2 {
@@ -85,7 +94,11 @@ constexpr Vec2 operator*(float scale, Vec2 vec) noexcept {
 
 /// Axis-aligned rectangle. For 2D Midas, this *is* an AABB: origin at the
 /// top-left, `w`/`h` extending right and down (same as SDL). Keep `w` and `h`
-/// non-negative; `overlaps` / `contains` assume that.
+/// non-negative.
+///
+/// `contains` is half-open: `[x, x+w) × [y, y+h)`. `overlaps` uses the same
+/// edges — rectangles that only share a boundary do not overlap, and a
+/// zero-size rect contains nothing and overlaps nothing.
 struct Rect {
     float x{};
     float y{};

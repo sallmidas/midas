@@ -10,7 +10,7 @@
 namespace midas {
 namespace {
 
-constexpr std::size_t key_count = static_cast<std::size_t>(Key::Down) + 1;
+constexpr std::size_t key_count = static_cast<std::size_t>(Key::Grave) + 1;
 constexpr std::size_t mouse_button_count = static_cast<std::size_t>(MouseButton::Middle) + 1;
 
 int index_of(Key key) noexcept {
@@ -62,9 +62,51 @@ bool map_key(SDL_Keycode code, Key& out) noexcept {
         case SDLK_DOWN:
             out = Key::Down;
             return true;
+        case SDLK_F1:
+            out = Key::F1;
+            return true;
+        case SDLK_GRAVE:
+            out = Key::Grave;
+            return true;
         default:
             return false;
     }
+}
+
+SDL_Keycode sdl_keycode(Key key) noexcept {
+    switch (key) {
+        case Key::Escape:
+            return SDLK_ESCAPE;
+        case Key::Space:
+            return SDLK_SPACE;
+        case Key::Enter:
+            return SDLK_RETURN;
+        case Key::W:
+            return SDLK_W;
+        case Key::A:
+            return SDLK_A;
+        case Key::S:
+            return SDLK_S;
+        case Key::D:
+            return SDLK_D;
+        case Key::Q:
+            return SDLK_Q;
+        case Key::E:
+            return SDLK_E;
+        case Key::Left:
+            return SDLK_LEFT;
+        case Key::Right:
+            return SDLK_RIGHT;
+        case Key::Up:
+            return SDLK_UP;
+        case Key::Down:
+            return SDLK_DOWN;
+        case Key::F1:
+            return SDLK_F1;
+        case Key::Grave:
+            return SDLK_GRAVE;
+    }
+    return SDLK_UNKNOWN;
 }
 
 bool map_mouse_button(Uint8 button, MouseButton& out) noexcept {
@@ -196,6 +238,9 @@ void Input::handle_native_event(const void* native_event) noexcept {
             impl_->mouse_initialized = false;
             impl_->mouse_dx = 0.0f;
             impl_->mouse_dy = 0.0f;
+            // Pass-2 released keys on focus loss, so a held WASD would stay
+            // dead until a new KEY_DOWN. Re-read the OS so pan resumes.
+            sync_held_from_device();
             break;
         case SDL_EVENT_WINDOW_MOUSE_LEAVE: {
             bool held = false;
@@ -282,6 +327,34 @@ void Input::request_quit() noexcept {
 void Input::release_held() noexcept {
     impl_->down.fill(false);
     impl_->mouse_down.fill(false);
+}
+
+void Input::sync_held_from_device() noexcept {
+    int numkeys = 0;
+    const bool* state = SDL_GetKeyboardState(&numkeys);
+    if (state != nullptr && numkeys > 0) {
+        static constexpr Key kKeys[] = {
+            Key::Escape, Key::Space, Key::Enter, Key::W, Key::A, Key::S, Key::D,
+            Key::Q,      Key::E,     Key::Left,  Key::Right, Key::Up,   Key::Down,
+            Key::F1,     Key::Grave,
+        };
+        for (Key key : kKeys) {
+            const SDL_Scancode scancode = SDL_GetScancodeFromKey(sdl_keycode(key), nullptr);
+            const int index = static_cast<int>(scancode);
+            const bool held = index >= 0 && index < numkeys && state[index];
+            impl_->down[static_cast<std::size_t>(index_of(key))] = held;
+        }
+    }
+
+    float mouse_x = 0.0f;
+    float mouse_y = 0.0f;
+    const SDL_MouseButtonFlags buttons = SDL_GetMouseState(&mouse_x, &mouse_y);
+    impl_->mouse_down[static_cast<std::size_t>(index_of(MouseButton::Left))] =
+        (buttons & SDL_BUTTON_LMASK) != 0;
+    impl_->mouse_down[static_cast<std::size_t>(index_of(MouseButton::Right))] =
+        (buttons & SDL_BUTTON_RMASK) != 0;
+    impl_->mouse_down[static_cast<std::size_t>(index_of(MouseButton::Middle))] =
+        (buttons & SDL_BUTTON_MMASK) != 0;
 }
 
 }  // namespace midas
