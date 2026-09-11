@@ -13,6 +13,13 @@ struct Window::Impl {
     int width{0};
     int height{0};
     Native native;
+
+    ~Impl() {
+        if (native.window != nullptr) {
+            SDL_DestroyWindow(native.window);
+            native.window = nullptr;
+        }
+    }
 };
 
 Window::Window(std::string title, int width, int height)
@@ -31,12 +38,7 @@ Window::Window(std::string title, int width, int height)
     }
 }
 
-Window::~Window() {
-    if (impl_ && impl_->native.window != nullptr) {
-        SDL_DestroyWindow(impl_->native.window);
-        impl_->native.window = nullptr;
-    }
-}
+Window::~Window() = default;
 
 std::string_view Window::title() const noexcept {
     return impl_->title;

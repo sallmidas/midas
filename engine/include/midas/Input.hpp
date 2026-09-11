@@ -41,7 +41,9 @@ enum class MouseButton {
 ///
 /// Focus loss releases held keys/buttons. Focus gain re-reads the OS keyboard
 /// and mouse-button state so WASD still pans if you alt-tab back with a key
-/// held (a leftover KEY_DOWN is not required).
+/// held (a leftover KEY_DOWN is not required). Held keys are copied into
+/// `previous` so focus gain does not synthesize `key_pressed` / `mouse_pressed`
+/// (that would quit on still-held Escape or toggle the HUD on still-held F1).
 class Input {
 public:
     Input(const Input&) = delete;

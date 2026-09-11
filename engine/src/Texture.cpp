@@ -1,10 +1,12 @@
 #include <midas/Texture.hpp>
 
+#include "internal/GpuLifetime.hpp"
 #include "internal/Sdl.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <memory>
 #include <stdexcept>
 #include <string>
 
@@ -28,12 +30,18 @@ struct Texture::Impl {
     SDL_Texture* texture{nullptr};
     int width{0};
     int height{0};
+    std::shared_ptr<void> gpu;
 
     ~Impl() {
-        if (texture != nullptr) {
-            SDL_DestroyTexture(texture);
-            texture = nullptr;
+        if (texture == nullptr) {
+            return;
         }
+        // Renderer already gone → SDL_DestroyRenderer freed leftover textures.
+        const auto* life = static_cast<const detail::GpuLifetime*>(gpu.get());
+        if (life == nullptr || life->alive) {
+            SDL_DestroyTexture(texture);
+        }
+        texture = nullptr;
     }
 
     Impl() = default;
@@ -41,10 +49,12 @@ struct Texture::Impl {
     Impl& operator=(const Impl&) = delete;
 };
 
-Texture::Texture(void* native_texture, int width, int height) : impl_(std::make_unique<Impl>()) {
+Texture::Texture(void* native_texture, int width, int height, std::shared_ptr<void> gpu_lifetime)
+    : impl_(std::make_unique<Impl>()) {
     impl_->texture = static_cast<SDL_Texture*>(native_texture);
     impl_->width = width;
     impl_->height = height;
+    impl_->gpu = std::move(gpu_lifetime);
 
     if (impl_->texture == nullptr) {
         throw std::runtime_error("Midas texture requires a native handle");

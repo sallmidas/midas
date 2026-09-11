@@ -39,6 +39,9 @@ struct Engine::Impl {
 
     EngineConfig config;
     bool running{false};
+    // Construct: SDL → Window → Renderer. Destroy (reverse): Renderer →
+    // Window → SDL_Quit. Drop game Textures before Engine; leftover Texture
+    // dtors no-op after Renderer clears GpuLifetime::alive.
     SdlVideo sdl;
     Window window;
     Renderer renderer;
@@ -48,7 +51,7 @@ struct Engine::Impl {
 
 Engine::Engine(EngineConfig config) : impl_(std::make_unique<Impl>(std::move(config))) {}
 
-Engine::~Engine() = default;
+Engine::~Engine() = default;  // Impl member order: Renderer, then Window, then SDL_Quit.
 
 Window& Engine::window() noexcept {
     return impl_->window;
