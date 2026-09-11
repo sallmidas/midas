@@ -4,6 +4,8 @@
 #include <midas/Texture.hpp>
 #include <midas/Types.hpp>
 
+#include <cmath>
+
 namespace midas {
 
 /// Position in world units and a uniform/non-uniform scale. No rotation yet —
