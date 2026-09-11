@@ -9,7 +9,7 @@
     {
       "name": "debug",
       "displayName": "Debug",
-      "description": "Debug build (Ninja) with compile_commands.json. Prefers Homebrew SDL3; otherwise fetches SDL3 3.4.16.",
+      "description": "Debug build (Ninja) with compile_commands.json. Prefers Homebrew/system SDL3; otherwise fetches SDL3 3.4.16. Works on macOS and Linux.",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/debug",
       "cacheVariables": {
@@ -20,7 +20,7 @@
     {
       "name": "release",
       "displayName": "Release",
-      "description": "Optimized Ninja build. Same SDL3 resolution as debug.",
+      "description": "Optimized Ninja build on macOS or Linux. Same SDL3 resolution as debug.",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/release",
       "cacheVariables": {
