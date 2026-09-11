@@ -4,8 +4,11 @@
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
+#include <iomanip>
 #include <iostream>
+#include <limits>
 #include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -92,6 +95,44 @@ void self_check_math() {
     camera.zoom_toward(cursor, 0.0f, kViewportW, kViewportH);
     if (camera.zoom != 2.0f) {
         throw std::runtime_error("Midas self-check: non-positive zoom multiplier should be ignored");
+    }
+
+    camera.zoom = std::numeric_limits<float>::quiet_NaN();
+    if (std::abs(camera.clamped_zoom() - 1.0f) > 0.0f) {
+        throw std::runtime_error("Midas self-check: NaN zoom should sanitize to 1");
+    }
+    camera.position = {std::numeric_limits<float>::quiet_NaN(), 10.0f};
+    camera.zoom = 1.0f;
+    {
+        const midas::Vec2 pan = camera.finite_position();
+        if (pan.x != 0.0f || pan.y != 10.0f || std::isfinite(camera.position.x)) {
+            throw std::runtime_error("Midas self-check: finite_position should not mutate the camera");
+        }
+        const Vec2 projected =
+            camera.world_to_screen({0.0f, 10.0f}, kViewportW, kViewportH);
+        if (!std::isfinite(projected.x) || !std::isfinite(projected.y)) {
+            throw std::runtime_error("Midas self-check: projection should ignore NaN pan");
+        }
+    }
+    camera.position = {std::numeric_limits<float>::quiet_NaN(),
+                       std::numeric_limits<float>::infinity()};
+    camera.sanitize();
+    if (camera.position.x != 0.0f || camera.position.y != 0.0f || camera.zoom != 1.0f) {
+        throw std::runtime_error("Midas self-check: sanitize should drop non-finite pan/zoom");
+    }
+
+    camera.position = {kViewportW * 0.5f, kViewportH * 0.5f};
+    camera.zoom = 2.0f;
+    const Rect zoomed = camera.visible_world_rect(kViewportW, kViewportH);
+    if (std::abs(zoomed.w - kViewportW * 0.5f) > 0.01f || std::abs(zoomed.h - kViewportH * 0.5f) > 0.01f) {
+        throw std::runtime_error("Midas self-check: zoom 2 should show half the world");
+    }
+    if (std::abs((zoomed.w / zoomed.h) - (kViewportW / kViewportH)) > 0.001f) {
+        throw std::runtime_error("Midas self-check: zoomed view should stay aspect-correct");
+    }
+    const Rect projected = camera.project({10.0f, 20.0f, 100.0f, 50.0f}, kViewportW, kViewportH);
+    if (std::abs(projected.w - 200.0f) > 0.01f || std::abs(projected.h - 100.0f) > 0.01f) {
+        throw std::runtime_error("Midas self-check: project should scale fills and sprites the same");
     }
 
     const Rect a{0.0f, 0.0f, 10.0f, 10.0f};
@@ -248,6 +289,11 @@ void apply_camera_controls(midas::Engine& engine, midas::Camera& camera, const m
     const float viewport_h = static_cast<float>(engine.renderer().logical_height());
     const midas::Vec2 view_center{viewport_w * 0.5f, viewport_h * 0.5f};
 
+    if (!input.window_focused()) {
+        camera.sanitize();
+        return;
+    }
+
     if (input.key_pressed(midas::Key::Space)) {
         camera = home;
         return;
@@ -268,7 +314,8 @@ void apply_camera_controls(midas::Engine& engine, midas::Camera& camera, const m
     }
 
     // Constant *screen-space* pan: divide by zoom so the view doesn't crawl
-    // when zoomed in or race when zoomed out.
+    // when zoomed in or race when zoomed out. `dt` is the fixed 1/60 gameplay
+    // step, not wall-clock `frame_seconds()` — a hitch must not fling the camera.
     constexpr float pan_speed = 520.0f;
     camera.position += move.normalized_or_zero() * (pan_speed / camera.clamped_zoom()) * dt;
 
@@ -295,6 +342,37 @@ void apply_camera_controls(midas::Engine& engine, midas::Camera& camera, const m
     }
 
     camera.sanitize();
+}
+
+/// Screen-space HUD: stays put while the world pans/zooms. Uses fixed-timestep
+/// `delta_seconds()` for the label and wall-clock `frames_per_second()` for pacing.
+void draw_debug_overlay(midas::Engine& engine, const midas::Camera& camera) {
+    auto& renderer = engine.renderer();
+    const auto& time = engine.time();
+
+    constexpr float x = 10.0f;
+    constexpr float y = 10.0f;
+    constexpr float line_h = 12.0f;
+    constexpr float banner_w = 560.0f;
+    constexpr float banner_h = 34.0f;
+    renderer.fill_screen_rect({x - 4.0f, y - 4.0f, banner_w, banner_h}, {0.0f, 0.0f, 0.0f, 0.55f});
+
+    std::ostringstream line1;
+    line1 << std::fixed << std::setprecision(4) << "Midas  dt=" << time.delta_seconds() << "s";
+    const double fps = time.frames_per_second();
+    if (fps > 0.0) {
+        line1 << std::setprecision(0) << "  " << fps << " fps";
+    }
+    if (!engine.input().window_focused()) {
+        line1 << "  [unfocused]";
+    }
+
+    std::ostringstream line2;
+    line2 << std::fixed << std::setprecision(1) << "cam " << camera.position.x << ","
+          << camera.position.y << "  zoom " << std::setprecision(2) << camera.clamped_zoom();
+
+    renderer.draw_debug_text({x, y}, line1.str(), midas::Color::gold());
+    renderer.draw_debug_text({x, y + line_h}, line2.str(), midas::Color::white());
 }
 
 }  // namespace
@@ -344,12 +422,14 @@ int main(int argc, char** argv) {
             for (const auto& entity : scene) {
                 midas::draw_entity(renderer, entity);
             }
+            draw_debug_overlay(engine, camera);
             renderer.present();
         });
 
         if (smoke_ticks > 0) {
             std::cerr << "Midas: smoke completed " << smoke_ticks << " ticks (" << scene.size()
-                      << " entities, camera/AABB self-check ok)\n";
+                      << " entities, " << std::fixed << std::setprecision(0)
+                      << engine.time().frames_per_second() << " fps, camera/AABB self-check ok)\n";
         }
         return status;
     } catch (const std::exception& ex) {

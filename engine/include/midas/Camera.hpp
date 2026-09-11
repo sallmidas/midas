@@ -51,16 +51,24 @@ struct Camera {
         }
     }
 
+    /// Pan used for projection: non-finite components become 0. Does not mutate.
+    [[nodiscard]] Vec2 finite_position() const noexcept {
+        return {
+            std::isfinite(position.x) ? position.x : 0.0f,
+            std::isfinite(position.y) ? position.y : 0.0f,
+        };
+    }
+
     [[nodiscard]] Vec2 world_to_screen(Vec2 world, float viewport_w, float viewport_h) const noexcept {
         const float z = clamped_zoom();
         const Vec2 half{viewport_w * 0.5f, viewport_h * 0.5f};
-        return (world - position) * z + half;
+        return (world - finite_position()) * z + half;
     }
 
     [[nodiscard]] Vec2 screen_to_world(Vec2 screen, float viewport_w, float viewport_h) const noexcept {
         const float z = clamped_zoom();
         const Vec2 half{viewport_w * 0.5f, viewport_h * 0.5f};
-        return (screen - half) / z + position;
+        return (screen - half) / z + finite_position();
     }
 
     [[nodiscard]] Rect project(const Rect& world, float viewport_w, float viewport_h) const noexcept {
@@ -83,6 +91,13 @@ struct Camera {
     void zoom_toward(Vec2 screen_point, float multiplier, float viewport_w, float viewport_h) noexcept {
         sanitize();
         if (!std::isfinite(multiplier) || multiplier <= 0.0f) {
+            return;
+        }
+        if (!std::isfinite(viewport_w) || !std::isfinite(viewport_h) || viewport_w <= 0.0f ||
+            viewport_h <= 0.0f) {
+            return;
+        }
+        if (!std::isfinite(screen_point.x) || !std::isfinite(screen_point.y)) {
             return;
         }
 

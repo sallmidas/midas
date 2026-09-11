@@ -57,7 +57,8 @@ struct Entity {
 
 inline void draw_entity(Renderer& renderer, const Entity& entity) {
     const Rect dest = entity.bounds();
-    if (dest.w == 0.0f || dest.h == 0.0f) {
+    // Negative scale is not supported yet (draws stay axis-aligned, positive size).
+    if (dest.w <= 0.0f || dest.h <= 0.0f) {
         return;
     }
     if (entity.texture != nullptr) {

@@ -5,6 +5,8 @@
 #include "internal/Sdl.hpp"
 #include "internal/WindowNative.hpp"
 
+#include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <filesystem>
 #include <stdexcept>
@@ -16,6 +18,32 @@ namespace midas {
 namespace {
 
 constexpr int kMaxTextureDimension = 16384;
+
+Color clamp_color(Color color) noexcept {
+    auto channel = [](float value, float fallback) noexcept {
+        if (!std::isfinite(value)) {
+            return fallback;
+        }
+        return std::clamp(value, 0.0f, 1.0f);
+    };
+    color.r = channel(color.r, 0.0f);
+    color.g = channel(color.g, 0.0f);
+    color.b = channel(color.b, 0.0f);
+    color.a = channel(color.a, 1.0f);
+    return color;
+}
+
+bool is_drawable_rect(const Rect& rect) noexcept {
+    return std::isfinite(rect.x) && std::isfinite(rect.y) && std::isfinite(rect.w) &&
+           std::isfinite(rect.h) && rect.w > 0.0f && rect.h > 0.0f;
+}
+
+void set_draw_color(SDL_Renderer* renderer, const Color& color) {
+    const Color clamped = clamp_color(color);
+    if (!SDL_SetRenderDrawColorFloat(renderer, clamped.r, clamped.g, clamped.b, clamped.a)) {
+        detail::throw_sdl("SDL_SetRenderDrawColorFloat failed");
+    }
+}
 
 }  // namespace
 
@@ -49,6 +77,11 @@ Renderer::Renderer(Window& window) : impl_(std::make_unique<Impl>()) {
         detail::throw_sdl("SDL_SetRenderLogicalPresentation failed");
     }
 
+    // Alpha fills (HUD banner) and tinted sprites share this blend mode.
+    if (!SDL_SetRenderDrawBlendMode(impl_->native.renderer, SDL_BLENDMODE_BLEND)) {
+        detail::throw_sdl("SDL_SetRenderDrawBlendMode failed");
+    }
+
     (void)SDL_SetRenderVSync(impl_->native.renderer, 1);
 }
 
@@ -73,19 +106,18 @@ Rect Renderer::project_world(const Rect& world) const noexcept {
 }
 
 void Renderer::clear(const Color& color) {
-    if (!SDL_SetRenderDrawColorFloat(impl_->native.renderer, color.r, color.g, color.b, color.a)) {
-        detail::throw_sdl("SDL_SetRenderDrawColorFloat failed");
-    }
+    set_draw_color(impl_->native.renderer, color);
     if (!SDL_RenderClear(impl_->native.renderer)) {
         detail::throw_sdl("SDL_RenderClear failed");
     }
 }
 
 void Renderer::fill_rect(const Rect& rect, const Color& color) {
-    if (!SDL_SetRenderDrawColorFloat(impl_->native.renderer, color.r, color.g, color.b, color.a)) {
-        detail::throw_sdl("SDL_SetRenderDrawColorFloat failed");
-    }
     const Rect screen = project_world(rect);
+    if (!is_drawable_rect(screen)) {
+        return;
+    }
+    set_draw_color(impl_->native.renderer, color);
     const SDL_FRect native_rect{screen.x, screen.y, screen.w, screen.h};
     if (!SDL_RenderFillRect(impl_->native.renderer, &native_rect)) {
         detail::throw_sdl("SDL_RenderFillRect failed");
@@ -98,17 +130,50 @@ void Renderer::draw_texture(const Texture& texture, const Rect& dest, const Colo
         throw std::runtime_error("Midas draw_texture requires a valid texture");
     }
 
-    if (!SDL_SetTextureColorModFloat(native_texture, tint.r, tint.g, tint.b)) {
+    const Rect screen = project_world(dest);
+    if (!is_drawable_rect(screen)) {
+        return;
+    }
+
+    // Color/alpha mod is a per-texel multiply, independent of the projected dest
+    // size — a gold tint stays gold at any camera zoom.
+    const Color clamped = clamp_color(tint);
+    if (!SDL_SetTextureColorModFloat(native_texture, clamped.r, clamped.g, clamped.b)) {
         detail::throw_sdl("SDL_SetTextureColorModFloat failed");
     }
-    if (!SDL_SetTextureAlphaModFloat(native_texture, tint.a)) {
+    if (!SDL_SetTextureAlphaModFloat(native_texture, clamped.a)) {
         detail::throw_sdl("SDL_SetTextureAlphaModFloat failed");
     }
 
-    const Rect screen = project_world(dest);
     const SDL_FRect native_rect{screen.x, screen.y, screen.w, screen.h};
     if (!SDL_RenderTexture(impl_->native.renderer, native_texture, nullptr, &native_rect)) {
         detail::throw_sdl("SDL_RenderTexture failed");
+    }
+
+    // Restore identity so a later draw of this texture cannot inherit the tint.
+    (void)SDL_SetTextureColorModFloat(native_texture, 1.0f, 1.0f, 1.0f);
+    (void)SDL_SetTextureAlphaModFloat(native_texture, 1.0f);
+}
+
+void Renderer::fill_screen_rect(const Rect& rect, const Color& color) {
+    if (!is_drawable_rect(rect)) {
+        return;
+    }
+    set_draw_color(impl_->native.renderer, color);
+    const SDL_FRect native_rect{rect.x, rect.y, rect.w, rect.h};
+    if (!SDL_RenderFillRect(impl_->native.renderer, &native_rect)) {
+        detail::throw_sdl("SDL_RenderFillRect failed");
+    }
+}
+
+void Renderer::draw_debug_text(Vec2 position, std::string_view text, const Color& color) {
+    if (text.empty() || !std::isfinite(position.x) || !std::isfinite(position.y)) {
+        return;
+    }
+    set_draw_color(impl_->native.renderer, color);
+    const std::string owned{text};
+    if (!SDL_RenderDebugText(impl_->native.renderer, position.x, position.y, owned.c_str())) {
+        detail::throw_sdl("SDL_RenderDebugText failed");
     }
 }
 

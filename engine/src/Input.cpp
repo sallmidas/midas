@@ -2,7 +2,9 @@
 
 #include "internal/Sdl.hpp"
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 
 namespace midas {
@@ -81,6 +83,9 @@ bool map_mouse_button(Uint8 button, MouseButton& out) noexcept {
     }
 }
 
+constexpr float kMaxMouseDelta = 512.0f;
+constexpr float kMaxWheelY = 8.0f;
+
 }  // namespace
 
 struct Input::Impl {
@@ -97,6 +102,7 @@ struct Input::Impl {
     float wheel_y{};
     bool quit{false};
     bool mouse_initialized{false};
+    bool focused{true};
 };
 
 Input::Input() : impl_(std::make_unique<Impl>()) {}
@@ -153,6 +159,10 @@ bool Input::mouse_pressed(MouseButton button) const noexcept {
     return impl_->mouse_down[i] && !impl_->mouse_previous[i];
 }
 
+bool Input::window_focused() const noexcept {
+    return impl_->focused;
+}
+
 void Input::begin_frame() noexcept {
     impl_->previous = impl_->down;
     impl_->mouse_previous = impl_->mouse_down;
@@ -173,9 +183,43 @@ void Input::handle_native_event(const void* native_event) noexcept {
         case SDL_EVENT_QUIT:
             impl_->quit = true;
             break;
+        case SDL_EVENT_WINDOW_FOCUS_LOST:
+            release_held();
+            impl_->focused = false;
+            impl_->mouse_initialized = false;
+            impl_->mouse_dx = 0.0f;
+            impl_->mouse_dy = 0.0f;
+            impl_->wheel_y = 0.0f;
+            break;
+        case SDL_EVENT_WINDOW_FOCUS_GAINED:
+            impl_->focused = true;
+            impl_->mouse_initialized = false;
+            impl_->mouse_dx = 0.0f;
+            impl_->mouse_dy = 0.0f;
+            break;
+        case SDL_EVENT_WINDOW_MOUSE_LEAVE: {
+            bool held = false;
+            for (bool down : impl_->mouse_down) {
+                if (down) {
+                    held = true;
+                    break;
+                }
+            }
+            // Keep tracking while a button is held so right-drag pan can leave the window.
+            // Otherwise the next enter would see a huge delta from the last interior sample.
+            if (!held) {
+                impl_->mouse_initialized = false;
+                impl_->mouse_dx = 0.0f;
+                impl_->mouse_dy = 0.0f;
+            }
+            break;
+        }
         case SDL_EVENT_KEY_DOWN:
         case SDL_EVENT_KEY_UP: {
             if (event.key.repeat) {
+                break;
+            }
+            if (event.type == SDL_EVENT_KEY_DOWN && !impl_->focused) {
                 break;
             }
             Key key{};
@@ -187,6 +231,9 @@ void Input::handle_native_event(const void* native_event) noexcept {
         }
         case SDL_EVENT_MOUSE_BUTTON_DOWN:
         case SDL_EVENT_MOUSE_BUTTON_UP: {
+            if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && !impl_->focused) {
+                break;
+            }
             MouseButton button{};
             if (!map_mouse_button(event.button.button, button)) {
                 break;
@@ -195,7 +242,10 @@ void Input::handle_native_event(const void* native_event) noexcept {
             break;
         }
         case SDL_EVENT_MOUSE_WHEEL:
-            impl_->wheel_y += event.wheel.y;
+            if (!impl_->focused || !std::isfinite(event.wheel.y)) {
+                break;
+            }
+            impl_->wheel_y = std::clamp(impl_->wheel_y + event.wheel.y, -kMaxWheelY, kMaxWheelY);
             break;
         default:
             break;
@@ -203,22 +253,35 @@ void Input::handle_native_event(const void* native_event) noexcept {
 }
 
 void Input::set_mouse_position(float x, float y) noexcept {
+    if (!std::isfinite(x) || !std::isfinite(y)) {
+        impl_->mouse_dx = 0.0f;
+        impl_->mouse_dy = 0.0f;
+        return;
+    }
+
     impl_->mouse_x = x;
     impl_->mouse_y = y;
-    if (!impl_->mouse_initialized) {
+    if (!impl_->focused || !impl_->mouse_initialized) {
         impl_->prev_mouse_x = x;
         impl_->prev_mouse_y = y;
         impl_->mouse_dx = 0.0f;
         impl_->mouse_dy = 0.0f;
-        impl_->mouse_initialized = true;
+        if (impl_->focused) {
+            impl_->mouse_initialized = true;
+        }
         return;
     }
-    impl_->mouse_dx = x - impl_->prev_mouse_x;
-    impl_->mouse_dy = y - impl_->prev_mouse_y;
+    impl_->mouse_dx = std::clamp(x - impl_->prev_mouse_x, -kMaxMouseDelta, kMaxMouseDelta);
+    impl_->mouse_dy = std::clamp(y - impl_->prev_mouse_y, -kMaxMouseDelta, kMaxMouseDelta);
 }
 
 void Input::request_quit() noexcept {
     impl_->quit = true;
+}
+
+void Input::release_held() noexcept {
+    impl_->down.fill(false);
+    impl_->mouse_down.fill(false);
 }
 
 }  // namespace midas

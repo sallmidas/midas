@@ -20,11 +20,16 @@ Engine     Owns the SDL video subsystem and the subsystems below.
 Window     OS window (size, title). Native SDL handles stay private.
 Input      Keyboard + mouse (down / pressed this tick), wheel, quit (close box).
            Mouse position is in logical render coordinates.
-           `mouse_delta()` is zero until the first real sample (no first-frame jump).
-Time       Fixed timestep: `Time::tick_hz == 60`, `delta_seconds() == 1/60`.
-           `elapsed_seconds()` is wall-clock time, not a variable dt.
+           `mouse_delta()` is zero until the first real sample, on focus gain,
+           and while unfocused. Mouse/wheel deltas are clamped (no warp jumps).
+           Focus loss releases held keys and buttons (`window_focused()`).
+Time       Fixed timestep: `Time::tick_hz == 60`, `delta_seconds() == 1/60`
+           (use this for motion). `elapsed_seconds()` is wall-clock.
+           `frame_seconds()` / `frames_per_second()` are the last tick's wall
+           time including the 60 Hz sleep — HUD, not gameplay.
 Renderer   Clear, fill rect, textured quad, present. Applies an orthographic camera.
-           `logical_width` / `logical_height` are the camera viewport.
+           `logical_width` / `logical_height` are the letterboxed present size.
+           `fill_screen_rect` / `draw_debug_text` are HUD space (ignore camera).
 Texture    GPU image from RGBA8 pixels (`create_texture`) or a BMP (`load_bmp`).
            Nearest-neighbor sampling; destroy before the Renderer.
 Camera     2D ortho view: `position` is the world point at the viewport center.
@@ -76,8 +81,17 @@ Each tick:
 5. Invoke the tick callback (update + render).
 6. Advance `Time::tick_index()`.
 7. Sleep the remainder of `1/60` s so the loop holds 60 Hz even without vsync (for example `SDL_VIDEODRIVER=dummy`).
+8. Record that tick's wall time on `Time` (`frame_seconds` / `frames_per_second`), including the sleep — or the overrun if the tick ran long.
 
-The renderer uses SDL3 logical presentation (`SDL_LOGICAL_PRESENTATION_LETTERBOX`) so drawing stays in the configured window coordinates on Retina / Apple Silicon displays and on a resized Linux window. Camera math should use `Renderer::logical_width/height`, not raw drawable pixels.
+Gameplay must use `delta_seconds()` (fixed `1/60`), not `frame_seconds()`. A hitch then does not fling the camera; the HUD can still show the dip in FPS.
+
+The renderer uses SDL3 logical presentation (`SDL_LOGICAL_PRESENTATION_LETTERBOX`) so drawing stays in the configured window coordinates (`EngineConfig` width × height, 1280×720 in the sandbox).
+
+- **Matching aspect (typical Retina / Apple Silicon):** the drawable has more pixels, but the aspect matches, so there are no bars — each logical pixel covers several drawable pixels.
+- **Mismatched aspect (resized window, odd display):** black bars pad the extra drawable region. The logical 1280×720 rectangle is undistorted in the middle.
+- **Mouse:** `Engine` converts window pixels → logical coordinates (`SDL_ConvertEventToRenderCoordinates` / `SDL_RenderCoordinatesFromWindow`). Pointers in the bars fall outside `0 .. logical_width/height`.
+- **Camera:** always pass `Renderer::logical_width/height` as the viewport, never raw drawable pixels. World fills and textures share `Camera::project`, so a gold square and a gold-tinted sprite of the same world rect stay aligned at any zoom. Tint is a per-texel multiply, not a function of dest size.
+- **HUD:** `fill_screen_rect` and `draw_debug_text` skip the camera so an overlay does not pan or zoom with the world. The sandbox draws FPS, camera position, and zoom this way.
 
 ## Camera
 
@@ -87,7 +101,7 @@ Visible world size is `(logical_w / zoom)` by `(logical_h / zoom)`, so the view 
 
 The renderer starts with `zoom == 1` and `position` at the viewport center, so world units match logical pixels until the game moves the camera. `fill_rect` and `draw_texture` take world rectangles; `Camera::project` maps them to the screen. `Camera::zoom_toward` scales around a screen point (mouse-wheel zoom) and ignores non-positive multipliers. Projection uses `clamped_zoom()` so a zero/NaN zoom cannot divide by zero.
 
-The sandbox pans with WASD / arrows (or right-mouse drag) at constant **screen-space** speed (`pan / zoom`) and zooms with Q/E or the wheel. Space resets the view.
+The sandbox pans with WASD / arrows (or right-mouse drag) at constant **screen-space** speed (`pan / zoom`) and zooms with Q/E or the wheel. Space resets the view. Held WASD and the right mouse button are released if the window loses focus, so the camera cannot keep sliding while you are in another app. Mouse-wheel and right-drag deltas are clamped so a cursor warp or a wild trackpad burst cannot jump the view. A HUD in the top-left shows the fixed `dt`, wall-clock FPS, camera position, and zoom.
 
 ## Textures
 
@@ -114,7 +128,7 @@ The sandbox locates `assets/midas_sprite.bmp` via `Engine::executable_directory(
 
 SDL3 is resolved by `cmake/MidasSDL3.cmake`:
 
-1. **Homebrew / system** — `brew --prefix sdl3` and `/opt/homebrew` on macOS; `find_package` on Linux.
-2. **FetchContent** — SDL3 **3.4.16** if no config package is found.
+1. **Homebrew / system** — `brew --prefix sdl3` and `/opt/homebrew` on macOS; `find_package(SDL3 3.2)` on Linux. 3.2 is the floor (`SDL_RenderDebugText` for the HUD).
+2. **FetchContent** — SDL3 **3.4.16** if no 3.2+ config package is found.
 
 The engine links `SDL3::SDL3` and does not leak that include path into public headers.

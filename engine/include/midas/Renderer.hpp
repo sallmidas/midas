@@ -14,10 +14,17 @@ class Window;
 
 /// 2D present path: clear, fill an axis-aligned rect, draw a textured quad, present.
 ///
-/// `fill_rect` and `draw_texture` take **world** rectangles. The active
-/// orthographic camera maps them into logical window pixels. Logical
-/// presentation is letterboxed, so the drawable aspect stays
-/// `logical_width : logical_height` even on a resized or Retina window.
+/// `fill_rect` and `draw_texture` take **world** rectangles and share one
+/// projection (`Camera::project`), so a solid and a tinted sprite of the same
+/// world rect stay the same size and position at any zoom. Tint is a per-texel
+/// multiply — it does not depend on dest size.
+///
+/// Drawing happens in a **logical** 2D space (`logical_width` × `logical_height`,
+/// the `EngineConfig` window size). SDL letterboxes that onto the real drawable
+/// (`SDL_LOGICAL_PRESENTATION_LETTERBOX`): black bars if the window pixel aspect
+/// differs; extra pixels on a Retina panel whose aspect still matches. Camera
+/// math and mouse coordinates use this logical size, not raw drawable pixels.
+/// HUD helpers (`fill_screen_rect`, `draw_debug_text`) skip the camera.
 class Renderer {
 public:
     Renderer(const Renderer&) = delete;
@@ -30,6 +37,16 @@ public:
     void fill_rect(const Rect& rect, const Color& color);
     void draw_texture(const Texture& texture, const Rect& dest,
                       const Color& tint = Color::white());
+
+    /// Axis-aligned fill in **logical present pixels** (ignores the camera).
+    /// Use for HUD / debug chrome that must not pan or zoom with the world.
+    void fill_screen_rect(const Rect& rect, const Color& color);
+
+    /// 8×8 debug bitmap text in logical present pixels (ignores the camera).
+    /// Wraps `SDL_RenderDebugText` — a teaching HUD, not a game font atlas.
+    void draw_debug_text(Vec2 position, std::string_view text,
+                         const Color& color = Color::white());
+
     void present();
 
     /// Upload tightly packed RGBA8 pixels (`width * height * 4` bytes).

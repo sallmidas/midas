@@ -1,6 +1,7 @@
-# Prefer an installed SDL3 (Homebrew on macOS / Linuxbrew, or a system package
-# such as Debian/Ubuntu `libsdl3-dev`). If none is found, fetch SDL3 3.4.16 via
-# CMake FetchContent.
+# Prefer an installed SDL3 3.2+ (Homebrew on macOS / Linuxbrew, or a system
+# package such as Debian/Ubuntu `libsdl3-dev`). 3.2 is the floor because the
+# sandbox HUD uses `SDL_RenderDebugText`. If none is found, fetch SDL3 3.4.16
+# via CMake FetchContent.
 
 set(MIDAS_SDL3_FETCH_VERSION "3.4.16")
 
@@ -29,7 +30,7 @@ if(APPLE)
     endif()
 endif()
 
-find_package(SDL3 3 CONFIG QUIET)
+find_package(SDL3 3.2 CONFIG QUIET)
 
 if(SDL3_FOUND)
     message(STATUS "Midas: using installed SDL3 ${SDL3_VERSION}")
