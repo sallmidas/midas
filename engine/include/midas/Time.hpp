@@ -1,5 +1,8 @@
 #pragma once
 
+#include <midas/Types.hpp>
+
+#include <cmath>
 #include <cstdint>
 #include <memory>
 
@@ -41,6 +44,31 @@ private:
 
     struct Impl;
     std::unique_ptr<Impl> impl_;
+};
+
+/// Seconds remaining until an action is allowed again.
+///
+/// Tick with `Time::delta_seconds()` (the fixed 1/60 gameplay step, not
+/// wall-clock `frame_seconds()`). Default-constructed and expired cooldowns
+/// are `ready()`. `start` of a non-positive or non-finite duration leaves it
+/// ready. A non-finite `tick` is ignored.
+struct Cooldown {
+    float remaining{};
+
+    void start(float seconds) noexcept {
+        remaining = (std::isfinite(seconds) && seconds > 0.0f) ? seconds : 0.0f;
+    }
+
+    void tick(float dt) noexcept {
+        if (!std::isfinite(dt) || dt <= 0.0f) {
+            return;
+        }
+        remaining = clamp(remaining - dt, 0.0f, remaining);
+    }
+
+    [[nodiscard]] bool ready() const noexcept {
+        return !(remaining > 0.0f);
+    }
 };
 
 }  // namespace midas

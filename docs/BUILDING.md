@@ -72,7 +72,7 @@ cmake --build --preset release
 
 ## Run
 
-The sandbox clears to charcoal and draws a small gold/bronze scene: a tiled floor strip, a solid gold square (easing toward bronze with `Color::lerp`), the BMP sprite, a gold-tinted copy of that sprite, a half-scale child sprite (`Transform::then`), and corner markers so pan/zoom has landmarks. A screen-space HUD (top-left) shows the fixed 60 Hz `dt`, wall-clock FPS, camera, and a one-line WASD/zoom/Space/F1 legend — it does not pan with the world. The banner padding uses `Rect::expanded`. **F1** or **`** hides it (handy for demos). `--smoke` leaves the HUD off so the dummy driver never has to draw debug text. The window is resizable and high-DPI (`SDL_WINDOW_HIGH_PIXEL_DENSITY`); the 1280×720 logical view is letterboxed (camera and mouse use that logical size, not the live window size and not the framebuffer pixel size). Interactive mode logs logical vs window vs pixel size once at startup.
+The sandbox clears to charcoal and draws a small gold/bronze scene: a tiled floor strip, a solid gold square (easing toward bronze with `Color::lerp`), the BMP sprite, a gold-tinted copy of that sprite, a half-scale child sprite (`Transform::then`), and corner markers so pan/zoom has landmarks. A screen-space HUD (top-left) shows the fixed 60 Hz `dt`, wall-clock FPS, camera, and a one-line WASD/zoom/Space/F1 legend — it does not pan with the world. The banner padding uses `Rect::expanded`. **F1** or **`** hides it (handy for demos). `--smoke` leaves the HUD off so the dummy driver never has to draw debug text. The window is resizable and high-DPI (`SDL_WINDOW_HIGH_PIXEL_DENSITY`); the 1280×720 **logical present** view is letterboxed. Camera and mouse use that logical size, not live window coordinates and not framebuffer pixels. Wheel zoom uses the closed present rect (`contains_inclusive`) so only letterbox bars are skipped. Interactive mode logs logical vs window vs pixel size once at startup.
 
 | Input | Action |
 | --- | --- |
@@ -80,13 +80,13 @@ The sandbox clears to charcoal and draws a small gold/bronze scene: a tiled floo
 | **WASD** / arrow keys | Pan the camera (screen-space speed is constant across zoom) |
 | Right mouse drag | Pan the camera |
 | **Q** / **E** | Zoom out / in around the view center (clamped to 0.25–8) |
-| Mouse wheel | Zoom toward the cursor (same clamp; ignored in letterbox bars) |
+| Mouse wheel | Zoom toward the cursor (same clamp; ignored in letterbox bars, not at the far edge of the view) |
 | **Space** | Reset pan and zoom to the identity logical view |
 | **F1** or **`** | Toggle the debug HUD |
 
 Textures use **nearest-neighbor** sampling so the BMP stays sharp when zoomed.
 
-Headless / CI smoke (a few 60 Hz ticks, then exit). This path also runs camera, AABB, `Rect::expanded`/`inset`, `Transform::then`, `Color::lerp`, `clamp`/`clamp01`, and `Vec2::length_squared` self-checks and fails if the BMP was not copied next to the binary. It does **not** require the debug HUD and does **not** print the interactive logical/window/pixel size line:
+Headless / CI smoke (a few 60 Hz ticks, then exit). This path also runs camera, AABB, `Rect::expanded`/`inset`/`contains_inclusive`, `Transform::then`, `Color::lerp`, `clamp`/`clamp01`, `Vec2::length_squared`, `Cooldown`, and the three-space mouse policy self-checks and fails if the BMP was not copied next to the binary. It does **not** require the debug HUD, does **not** print the interactive logical/window/pixel size line, and does **not** call `SDL_RenderCoordinatesFromWindow` (that converter needs a renderer and stays interactive-only):
 
 ```bash
 SDL_VIDEODRIVER=dummy ./build/debug/bin/midas_sandbox --smoke

@@ -11,17 +11,21 @@ class Renderer;
 /// OS window. Native SDL handles stay in `Native` (engine-private).
 ///
 /// Three sizes, three jobs (SDL high-DPI):
-/// - `width()` / `height()` — live client size in **window coordinates**
-///   (`SDL_GetWindowSize`). Changes on resize.
-/// - `pixel_width()` / `pixel_height()` — drawable framebuffer
+/// - **Window coordinates** — `width()` / `height()`, live OS client
+///   (`SDL_GetWindowSize`). `SDL_GetMouseState` is this space. Changes on
+///   resize.
+/// - **Framebuffer pixels** — `pixel_width()` / `pixel_height()`
 ///   (`SDL_GetWindowSizeInPixels`). On a Retina / high-DPI panel this is
 ///   often 2× `width`/`height` (`pixel_density()`).
-/// - `Renderer::logical_width/height` — letterboxed `EngineConfig` size.
-///   Drawing, the camera, and `Input` mouse positions use **only** this.
+/// - **Logical present pixels** — `Renderer::logical_width/height`, the
+///   letterboxed `EngineConfig` size. Drawing, the camera, and `Input` mouse
+///   positions use **only** this. Content covers the closed rect
+///   `[0, logical_w] × [0, logical_h]`; bars lie outside it.
 ///
 /// Never pass window or pixel size to `Camera` / `zoom_toward`. Never multiply
 /// mouse coordinates by `pixel_density()` — the engine already maps window
-/// coords → logical present pixels (letterbox + DPI).
+/// coords → logical present pixels (letterbox + DPI). The SDL converter needs
+/// a renderer; `--smoke` checks the three-space policy without a window.
 class Window {
 public:
     Window(const Window&) = delete;

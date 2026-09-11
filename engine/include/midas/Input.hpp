@@ -35,11 +35,16 @@ enum class MouseButton {
 /// `key_pressed` / `mouse_pressed` are edges (down this tick, up last tick).
 /// Mouse position is in **logical present pixels** (the `EngineConfig` /
 /// `Renderer::logical_size` space — same space as unzoomed world units when
-/// the camera is at identity). The engine maps SDL window coordinates through
-/// `SDL_RenderCoordinatesFromWindow` (letterbox + pixel density). Do **not**
-/// multiply by `Window::pixel_density()` and do not pass `Window::width`
-/// or pixel size to `Camera::zoom_toward`. Letterbox bars can yield a point
-/// slightly outside `[0, logical_w) × [0, logical_h)`.
+/// the camera is at identity). The engine maps SDL **window coordinates**
+/// through `SDL_RenderCoordinatesFromWindow` (letterbox + pixel density). Do
+/// **not** multiply by `Window::pixel_density()` and do not pass
+/// `Window::width` or pixel size to `Camera::zoom_toward`.
+///
+/// The drawable content maps onto the closed rect
+/// `[0, logical_w] × [0, logical_h]` (far edges are still the view). Letterbox
+/// bars yield a point outside that closed rect. Half-open `Rect::contains`
+/// rejects the far edge — use `contains_inclusive` to skip bars without
+/// dropping wheel zoom at the right/bottom of the present view.
 ///
 /// `mouse_delta()` is zero until the first real sample, on focus gain, on
 /// resize / DPI change, and while the window is unfocused, so a cursor warp

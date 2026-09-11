@@ -6,7 +6,6 @@
 #include "internal/Sdl.hpp"
 #include "internal/WindowNative.hpp"
 
-#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <filesystem>
@@ -26,7 +25,7 @@ Color clamp_color(Color color) noexcept {
         if (!std::isfinite(value)) {
             return fallback;
         }
-        return std::clamp(value, 0.0f, 1.0f);
+        return clamp01(value);
     };
     color.r = channel(color.r, 0.0f);
     color.g = channel(color.g, 0.0f);
