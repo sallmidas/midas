@@ -92,13 +92,12 @@ bool Engine::is_running() const noexcept {
 }
 
 std::filesystem::path Engine::executable_directory() const {
-    char* base = SDL_GetBasePath();
-    if (base == nullptr) {
+    // SDL3 caches this string; do not SDL_free it.
+    const char* base = SDL_GetBasePath();
+    if (base == nullptr || base[0] == '\0') {
         return {};
     }
-    std::filesystem::path path{base};
-    SDL_free(base);
-    return path;
+    return std::filesystem::path{base};
 }
 
 void Engine::pump_events() {
