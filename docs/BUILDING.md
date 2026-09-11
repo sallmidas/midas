@@ -1,6 +1,6 @@
 # Building Midas (macOS Apple Silicon)
 
-The engine is C++20. The supported developer setup is **macOS on Apple Silicon** (M-series) with Homebrew.
+The engine is C++20. SDL3 is C, so the top-level CMake project enables both languages. The supported developer setup is **macOS on Apple Silicon** (M-series) with Homebrew.
 
 ## Prerequisites
 
