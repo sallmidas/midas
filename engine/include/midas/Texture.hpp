@@ -30,6 +30,7 @@ public:
 
     [[nodiscard]] int width() const noexcept;
     [[nodiscard]] int height() const noexcept;
+    /// False if moved-from (the GPU handle lives in the destination texture).
     [[nodiscard]] bool valid() const noexcept;
 
 private:
@@ -45,6 +46,8 @@ private:
 
 /// Tightly packed RGBA8, row-major, 4 bytes per pixel. `cell_size` is the
 /// checker square in pixels. Used when you want a GPU texture without a file.
+/// Non-finite RGB channels become 0; non-finite alpha becomes 1 (same fallback
+/// as the renderer). Finite channels are `clamp01`'d.
 [[nodiscard]] std::vector<std::uint8_t> make_checkerboard_rgba(
     int width, int height, Color even, Color odd, int cell_size);
 

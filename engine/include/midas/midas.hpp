@@ -1,8 +1,8 @@
 #pragma once
 
 /// Umbrella for the public API. Includes Engine, Window, Input, Time
-/// (`Cooldown`), Renderer, Texture, Camera, Entity, and Types (`Color`,
-/// `Vec2`, `Rect`, `clamp` / `clamp01`).
+/// (`Cooldown`), Renderer, Texture (`make_checkerboard_rgba`), Camera, Entity,
+/// and Types (`Color`, `Vec2`, `Rect`, `clamp` / `clamp01`).
 
 #include <midas/Camera.hpp>
 #include <midas/Engine.hpp>

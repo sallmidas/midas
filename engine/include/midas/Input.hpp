@@ -6,6 +6,8 @@
 
 namespace midas {
 
+/// Gameplay keys. Add new enumerators at the end (`Input` sizes its array from
+/// the last value) and update `map_key` / `sdl_keycode` / `kKeys` in Input.cpp.
 enum class Key {
     Escape,
     Space,
@@ -21,13 +23,14 @@ enum class Key {
     Up,
     Down,
     F1,
-    Grave,  // backtick / tilde key
+    Grave,  // backtick / tilde key — keep last (array bound)
 };
 
+/// Add new buttons at the end (`Input` sizes its array from the last value).
 enum class MouseButton {
     Left,
     Right,
-    Middle,
+    Middle,  // keep last (array bound)
 };
 
 /// Keyboard and mouse snapshot for the current tick.
@@ -67,14 +70,20 @@ public:
     Input& operator=(Input&&) = delete;
     ~Input();
 
+    /// Held this tick (including keys restored on focus gain).
     [[nodiscard]] bool key_down(Key key) const noexcept;
+    /// Edge: down this tick, up last tick. Not fired on focus gain.
     [[nodiscard]] bool key_pressed(Key key) const noexcept;
     [[nodiscard]] bool quit_requested() const noexcept;
 
+    /// Logical present pixels (letterbox + DPI already applied).
     [[nodiscard]] Vec2 mouse_position() const noexcept;
+    /// Logical delta this tick; 0 until the first sample / on focus / resize / unfocused.
     [[nodiscard]] Vec2 mouse_delta() const noexcept;
+    /// This tick's wheel (clamped). 0 if unfocused.
     [[nodiscard]] float wheel_y() const noexcept;
     [[nodiscard]] bool mouse_down(MouseButton button) const noexcept;
+    /// Edge: down this tick, up last tick. Not fired on focus gain.
     [[nodiscard]] bool mouse_pressed(MouseButton button) const noexcept;
     [[nodiscard]] bool window_focused() const noexcept;
 

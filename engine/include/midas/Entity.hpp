@@ -40,6 +40,9 @@ struct Transform {
 ///
 /// `texture` is **non-owning**. The `Texture` must outlive the entity (in the
 /// sandbox: load the texture first, then fill the entity list).
+///
+/// TODO: 2D velocity / overlap resolution can wait; AABB `overlaps` is the
+/// collision starter.
 struct Entity {
     Transform transform;
     Vec2 size{};
@@ -55,6 +58,8 @@ struct Entity {
     }
 };
 
+/// World-space draw: textured quad if `texture` is set, else a solid fill.
+/// Skips a non-positive dest (negative scale is not supported yet).
 inline void draw_entity(Renderer& renderer, const Entity& entity) {
     const Rect dest = entity.bounds();
     // Negative scale is not supported yet (draws stay axis-aligned, positive size).

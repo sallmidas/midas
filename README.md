@@ -29,11 +29,13 @@ cmake --build --preset debug
 **Linux:**
 
 ```bash
-sudo apt install cmake ninja-build g++   # or clang
+sudo apt install cmake ninja-build g++ pkg-config   # or clang
 cmake --preset debug
 cmake --build --preset debug
 ./build/debug/bin/midas_sandbox
 ```
+
+If `c++` on `PATH` is Clang but CMake cannot link `libstdc++`, configure with `CC=gcc CXX=g++ cmake --preset debug`.
 
 A `release` preset is the same commands with `release` instead of `debug`.
 
@@ -60,6 +62,16 @@ SDL_VIDEODRIVER=dummy ./build/debug/bin/midas_sandbox --smoke
 # or: ctest --preset debug
 ```
 
-`--smoke` also runs camera/AABB/`Color::lerp`/`clamp`/`Vec2::length_squared`/`Rect::expanded`/`contains_inclusive`/`Cooldown` self-checks (including the three-space mouse policy) and **requires** `assets/midas_sprite.bmp` next to the binary (CMake copies it there; `cmake --install` places it beside the installed sandbox). A missing copy is an error in smoke mode even if a BMP exists in the source tree. In an interactive run a missing BMP logs where it looked and falls back to a generated checkerboard. The HUD is skipped in smoke so the dummy video driver does not need debug text, and the logical/window/pixel size line is skipped so smoke output stays deterministic. The SDL window→logical converter is interactive-only (`SDL_RenderCoordinatesFromWindow` needs a renderer).
+`--smoke` runs a header-only math self-check **before** SDL (clamp, Vec2 including `normalized_or_zero`, Color, Rect AABB, Camera, Transform, Entity, Cooldown, CPU `make_checkerboard_rgba`, three-space mouse policy), then a few dummy-video ticks that **require** `assets/midas_sprite.bmp` next to the binary (CMake copies it there; `cmake --install` places it beside the installed sandbox). A missing copy is an error in smoke mode even if a BMP exists in the source tree. In an interactive run a missing BMP logs where it looked and falls back to a generated checkerboard. The HUD is skipped in smoke so the dummy video driver does not need debug text, and the logical/window/pixel size line is skipped so smoke output stays deterministic. The SDL window→logical converter is interactive-only (`SDL_RenderCoordinatesFromWindow` needs a renderer).
 
 See [docs/BUILDING.md](docs/BUILDING.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## What's next (2D)
+
+Midas stays a small 2D engine. Natural follow-ons, not this tree:
+
+- **Physics** — `Rect::overlaps` / `Entity::overlaps` is the collision starter. Velocity and overlap resolution can wait.
+- **Audio** — SDL3 can play samples without SDL_mixer. An engine audio stub can wait until a game needs it.
+- **Assets** — BMP + CPU RGBA are enough to learn uploads. PNG (SDL_image) and linear filtering stay opt-in later.
+
+Not in scope: 3D, ECS, an editor, or multiplayer.
