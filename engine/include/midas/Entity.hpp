@@ -59,11 +59,12 @@ struct Entity {
 };
 
 /// World-space draw: textured quad if `texture` is set, else a solid fill.
-/// Skips a non-positive dest (negative scale is not supported yet).
+/// Skips a non-finite or non-positive dest (NaN size or negative scale is not
+/// supported yet — same drawable rule as `Renderer::fill_rect`).
 inline void draw_entity(Renderer& renderer, const Entity& entity) {
     const Rect dest = entity.bounds();
-    // Negative scale is not supported yet (draws stay axis-aligned, positive size).
-    if (dest.w <= 0.0f || dest.h <= 0.0f) {
+    if (!std::isfinite(dest.x) || !std::isfinite(dest.y) || !std::isfinite(dest.w) ||
+        !std::isfinite(dest.h) || dest.w <= 0.0f || dest.h <= 0.0f) {
         return;
     }
     if (entity.texture != nullptr) {
