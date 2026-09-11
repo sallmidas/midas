@@ -37,7 +37,7 @@ SDL3 is optional: many distros still ship only SDL2, in which case CMake downloa
 sudo apt install libsdl3-dev
 ```
 
-Headless / CI machines do not need a display server. FetchContent sets `SDL_UNIX_CONSOLE_BUILD` on Linux so SDL3 can build with the dummy video driver.
+Headless / CI machines do not need a display server. FetchContent sets `SDL_UNIX_CONSOLE_BUILD` on Linux so SDL3 can build with the dummy video driver. A windowed run needs an SDL video backend (X11 or Wayland): install `libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev` (and friends) before the first configure, or use distro `libsdl3-dev`. If CMake already fetched SDL3 without those packages, wipe `build/` and reconfigure.
 
 ### SDL3 via FetchContent
 
