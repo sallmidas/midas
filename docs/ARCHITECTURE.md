@@ -116,7 +116,7 @@ Both paths throw on bad input (empty path, missing file, undersized pixel buffer
 
 Textures use nearest-neighbor sampling (`SDL_SCALEMODE_NEAREST`) so pixel art stays sharp when the camera zooms. Linear filtering is intentionally not exposed yet.
 
-The sandbox locates `assets/midas_sprite.bmp` via `Engine::executable_directory()`, `argv[0]`, `./assets`, and the source tree `apps/sandbox/assets`. `--smoke` fails if that BMP is missing. An interactive run logs the search and falls back to a generated checkerboard.
+The sandbox locates `assets/midas_sprite.bmp` via `Engine::executable_directory()`, `argv[0]`, `./assets`, and the source tree `apps/sandbox/assets`. `--smoke` only accepts a BMP next to the binary (the CMake copy / install rule) and fails if that file is missing. An interactive run logs the search and falls back to a generated checkerboard.
 
 ## Entities and AABB
 

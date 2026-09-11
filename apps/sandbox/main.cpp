@@ -245,7 +245,7 @@ void add_candidate(std::vector<std::filesystem::path>& candidates, std::filesyst
 
 std::optional<std::filesystem::path> find_asset(const std::filesystem::path& exe_dir,
                                                 const char* argv0,
-                                                std::string_view name) {
+                                                std::string_view name, bool next_to_binary_only) {
     std::vector<std::filesystem::path> candidates;
     add_candidate(candidates, exe_dir / "assets" / name);
 
@@ -253,15 +253,17 @@ std::optional<std::filesystem::path> find_asset(const std::filesystem::path& exe
         add_candidate(candidates, std::filesystem::path(argv0).parent_path() / "assets" / name);
     }
 
-    std::error_code ec;
-    const auto cwd = std::filesystem::current_path(ec);
-    if (!ec) {
-        add_candidate(candidates, cwd / "assets" / name);
-        add_candidate(candidates, cwd / "apps" / "sandbox" / "assets" / name);
+    if (!next_to_binary_only) {
+        std::error_code cwd_ec;
+        const auto cwd = std::filesystem::current_path(cwd_ec);
+        if (!cwd_ec) {
+            add_candidate(candidates, cwd / "assets" / name);
+            add_candidate(candidates, cwd / "apps" / "sandbox" / "assets" / name);
+        }
     }
 
     for (const auto& candidate : candidates) {
-        ec.clear();
+        std::error_code ec;
         if (std::filesystem::is_regular_file(candidate, ec)) {
             return std::filesystem::weakly_canonical(candidate, ec);
         }
@@ -275,13 +277,20 @@ struct LoadedSprite {
     std::filesystem::path path;
 };
 
-LoadedSprite load_sprite(midas::Engine& engine, const char* argv0) {
+LoadedSprite load_sprite(midas::Engine& engine, const char* argv0, bool smoke) {
     constexpr int kSize = 64;
     auto& renderer = engine.renderer();
 
-    if (const auto path = find_asset(engine.executable_directory(), argv0, "midas_sprite.bmp")) {
+    if (const auto path =
+            find_asset(engine.executable_directory(), argv0, "midas_sprite.bmp", smoke)) {
         midas::Texture texture = renderer.load_bmp(path->string());
         return LoadedSprite{std::move(texture), true, *path};
+    }
+
+    if (smoke) {
+        std::cerr << "Midas: --smoke requires assets/midas_sprite.bmp next to the binary\n"
+                  << "  looked in " << (engine.executable_directory() / "assets").string() << '\n';
+        throw std::runtime_error("smoke missing BMP (CMake should copy it next to midas_sandbox)");
     }
 
     std::cerr << "Midas: missing assets/midas_sprite.bmp\n"
@@ -475,11 +484,7 @@ int main(int argc, char** argv) {
 
         midas::Engine engine{std::move(config)};
 
-        LoadedSprite sprite = load_sprite(engine, argc > 0 ? argv[0] : nullptr);
-        if (smoke_ticks > 0 && !sprite.from_bmp) {
-            std::cerr << "Midas: --smoke requires assets/midas_sprite.bmp next to the binary\n";
-            return 1;
-        }
+        LoadedSprite sprite = load_sprite(engine, argc > 0 ? argv[0] : nullptr, smoke_ticks > 0);
         if (sprite.from_bmp) {
             std::cerr << "Midas: loaded BMP " << sprite.texture.width() << "x" << sprite.texture.height()
                       << " from " << sprite.path.string() << '\n';

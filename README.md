@@ -59,6 +59,6 @@ SDL_VIDEODRIVER=dummy ./build/debug/bin/midas_sandbox --smoke
 # or: ctest --preset debug
 ```
 
-`--smoke` also runs camera/AABB/`Color::lerp` self-checks and **requires** `assets/midas_sprite.bmp` next to the binary (CMake copies it there; `cmake --install` places it beside the installed sandbox). A missing BMP is an error in smoke mode; in an interactive run it logs where it looked and falls back to a generated checkerboard. The HUD is skipped in smoke so the dummy video driver does not need debug text.
+`--smoke` also runs camera/AABB/`Color::lerp` self-checks and **requires** `assets/midas_sprite.bmp` next to the binary (CMake copies it there; `cmake --install` places it beside the installed sandbox). A missing copy is an error in smoke mode even if a BMP exists in the source tree. In an interactive run a missing BMP logs where it looked and falls back to a generated checkerboard. The HUD is skipped in smoke so the dummy video driver does not need debug text.
 
 See [docs/BUILDING.md](docs/BUILDING.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
