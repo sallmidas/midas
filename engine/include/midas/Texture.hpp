@@ -12,9 +12,13 @@ class Renderer;
 
 /// GPU texture uploaded from CPU pixels or a BMP file.
 ///
-/// Destroy the texture before the `Renderer` that created it. SDL destroys
-/// remaining textures with the renderer; a later `Texture` destructor would
-/// double-free.
+/// Sampling is nearest-neighbor (`SDL_SCALEMODE_NEAREST`) so pixel-art sprites
+/// stay sharp when the camera zooms. Linear filtering is a later, opt-in layer.
+///
+/// **Lifetime:** destroy the texture before the `Renderer` that created it.
+/// SDL destroys leftover GPU textures with the renderer; a `Texture` destructor
+/// running after that would be a use-after-free. Move-assignment is RAII-safe
+/// (the old GPU texture is released).
 class Texture {
 public:
     Texture(const Texture&) = delete;
@@ -25,6 +29,7 @@ public:
 
     [[nodiscard]] int width() const noexcept;
     [[nodiscard]] int height() const noexcept;
+    [[nodiscard]] bool valid() const noexcept;
 
 private:
     friend class Renderer;
@@ -38,7 +43,7 @@ private:
 };
 
 /// Tightly packed RGBA8, row-major, 4 bytes per pixel. `cell_size` is the
-/// checker square in pixels.
+/// checker square in pixels. Used when you want a GPU texture without a file.
 [[nodiscard]] std::vector<std::uint8_t> make_checkerboard_rgba(
     int width, int height, Color even, Color odd, int cell_size);
 

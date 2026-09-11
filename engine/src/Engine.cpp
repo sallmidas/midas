@@ -4,6 +4,7 @@
 #include "internal/Sdl.hpp"
 
 #include <cstdint>
+#include <filesystem>
 #include <utility>
 
 namespace midas {
@@ -30,6 +31,9 @@ struct Engine::Impl {
           sdl(),
           window(config.title, config.width, config.height),
           renderer(window) {
+        if (config.max_ticks < 0) {
+            config.max_ticks = 0;
+        }
         time.reset();
     }
 
@@ -85,6 +89,16 @@ void Engine::request_quit() noexcept {
 
 bool Engine::is_running() const noexcept {
     return impl_->running;
+}
+
+std::filesystem::path Engine::executable_directory() const {
+    char* base = SDL_GetBasePath();
+    if (base == nullptr) {
+        return {};
+    }
+    std::filesystem::path path{base};
+    SDL_free(base);
+    return path;
 }
 
 void Engine::pump_events() {

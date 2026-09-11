@@ -5,6 +5,7 @@
 #include <midas/Time.hpp>
 #include <midas/Window.hpp>
 
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <string>
@@ -42,6 +43,11 @@ public:
     [[nodiscard]] const Time& time() const noexcept;
     [[nodiscard]] Renderer& renderer() noexcept;
     [[nodiscard]] const Renderer& renderer() const noexcept;
+
+    /// Directory of the running executable (`SDL_GetBasePath`). Sandbox assets
+    /// copied next to the binary live in `executable_directory() / "assets"`.
+    /// Empty if SDL cannot report a path.
+    [[nodiscard]] std::filesystem::path executable_directory() const;
 
     void request_quit() noexcept;
     [[nodiscard]] bool is_running() const noexcept;

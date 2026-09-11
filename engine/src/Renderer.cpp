@@ -6,10 +6,18 @@
 #include "internal/WindowNative.hpp"
 
 #include <cstddef>
+#include <filesystem>
 #include <stdexcept>
 #include <string>
+#include <system_error>
+#include <utility>
 
 namespace midas {
+namespace {
+
+constexpr int kMaxTextureDimension = 16384;
+
+}  // namespace
 
 struct Renderer::Impl {
     Native native;
@@ -29,6 +37,7 @@ Renderer::Renderer(Window& window) : impl_(std::make_unique<Impl>()) {
     impl_->camera.position = {static_cast<float>(impl_->logical_width) * 0.5f,
                               static_cast<float>(impl_->logical_height) * 0.5f};
     impl_->camera.zoom = 1.0f;
+    impl_->camera.sanitize();
 
     impl_->native.renderer = SDL_CreateRenderer(native->window, nullptr);
     if (impl_->native.renderer == nullptr) {
@@ -113,11 +122,16 @@ Texture Renderer::create_texture(int width, int height, std::span<const std::uin
     if (width <= 0 || height <= 0) {
         throw std::runtime_error("Midas texture size must be positive");
     }
+    if (width > kMaxTextureDimension || height > kMaxTextureDimension) {
+        throw std::runtime_error("Midas texture size is too large");
+    }
 
     const std::size_t expected =
         static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4;
     if (rgba.size() < expected) {
-        throw std::runtime_error("Midas texture pixel buffer is too small");
+        throw std::runtime_error("Midas texture pixel buffer is too small (" +
+                                 std::to_string(rgba.size()) + " bytes, need " +
+                                 std::to_string(expected) + ")");
     }
 
     SDL_Texture* native = SDL_CreateTexture(impl_->native.renderer, SDL_PIXELFORMAT_RGBA32,
@@ -141,23 +155,33 @@ Texture Renderer::load_bmp(std::string_view path) {
     }
 
     const std::string path_str{path};
-    SDL_Surface* loaded = SDL_LoadBMP(path_str.c_str());
-    if (loaded == nullptr) {
-        detail::throw_sdl("SDL_LoadBMP failed");
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(path_str, ec)) {
+        throw std::runtime_error("Midas load_bmp: file not found: " + path_str);
     }
 
-    SDL_Surface* converted = SDL_ConvertSurface(loaded, SDL_PIXELFORMAT_RGBA32);
-    SDL_DestroySurface(loaded);
-    if (converted == nullptr) {
-        detail::throw_sdl("SDL_ConvertSurface failed");
+    detail::UniqueSurface loaded{SDL_LoadBMP(path_str.c_str())};
+    if (!loaded) {
+        detail::throw_sdl("SDL_LoadBMP failed (" + path_str + ")");
     }
 
-    SDL_Texture* native = SDL_CreateTextureFromSurface(impl_->native.renderer, converted);
+    detail::UniqueSurface converted{SDL_ConvertSurface(loaded.get(), SDL_PIXELFORMAT_RGBA32)};
+    if (!converted) {
+        detail::throw_sdl("SDL_ConvertSurface failed (" + path_str + ")");
+    }
+
+    if (converted->w <= 0 || converted->h <= 0) {
+        throw std::runtime_error("Midas load_bmp: invalid dimensions in " + path_str);
+    }
+    if (converted->w > kMaxTextureDimension || converted->h > kMaxTextureDimension) {
+        throw std::runtime_error("Midas load_bmp: image is too large: " + path_str);
+    }
+
+    SDL_Texture* native = SDL_CreateTextureFromSurface(impl_->native.renderer, converted.get());
     const int width = converted->w;
     const int height = converted->h;
-    SDL_DestroySurface(converted);
     if (native == nullptr) {
-        detail::throw_sdl("SDL_CreateTextureFromSurface failed");
+        detail::throw_sdl("SDL_CreateTextureFromSurface failed (" + path_str + ")");
     }
 
     return Texture{native, width, height};
@@ -165,11 +189,19 @@ Texture Renderer::load_bmp(std::string_view path) {
 
 void Renderer::set_camera(const Camera& camera) noexcept {
     impl_->camera = camera;
-    impl_->camera.clamp_zoom();
+    impl_->camera.sanitize();
 }
 
 const Camera& Renderer::camera() const noexcept {
     return impl_->camera;
+}
+
+int Renderer::logical_width() const noexcept {
+    return impl_->logical_width;
+}
+
+int Renderer::logical_height() const noexcept {
+    return impl_->logical_height;
 }
 
 }  // namespace midas

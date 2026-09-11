@@ -5,13 +5,39 @@
 #include <algorithm>
 #include <cstddef>
 #include <stdexcept>
+#include <string>
 
 namespace midas {
+namespace {
+
+constexpr int kMaxTextureDimension = 16384;
+
+void check_texture_size(int width, int height, const char* what) {
+    if (width <= 0 || height <= 0) {
+        throw std::runtime_error(std::string(what) + " size must be positive");
+    }
+    if (width > kMaxTextureDimension || height > kMaxTextureDimension) {
+        throw std::runtime_error(std::string(what) + " size is too large");
+    }
+}
+
+}  // namespace
 
 struct Texture::Impl {
     SDL_Texture* texture{nullptr};
     int width{0};
     int height{0};
+
+    ~Impl() {
+        if (texture != nullptr) {
+            SDL_DestroyTexture(texture);
+            texture = nullptr;
+        }
+    }
+
+    Impl() = default;
+    Impl(const Impl&) = delete;
+    Impl& operator=(const Impl&) = delete;
 };
 
 Texture::Texture(void* native_texture, int width, int height) : impl_(std::make_unique<Impl>()) {
@@ -23,20 +49,21 @@ Texture::Texture(void* native_texture, int width, int height) : impl_(std::make_
         throw std::runtime_error("Midas texture requires a native handle");
     }
 
-    (void)SDL_SetTextureBlendMode(impl_->texture, SDL_BLENDMODE_BLEND);
-    (void)SDL_SetTextureScaleMode(impl_->texture, SDL_SCALEMODE_NEAREST);
+    // Nearest-neighbor: one texel → one (or many) pixels. Linear would blur
+    // pixel art the moment the camera zoom is not 1.
+    if (!SDL_SetTextureBlendMode(impl_->texture, SDL_BLENDMODE_BLEND)) {
+        detail::throw_sdl("SDL_SetTextureBlendMode failed");
+    }
+    if (!SDL_SetTextureScaleMode(impl_->texture, SDL_SCALEMODE_NEAREST)) {
+        detail::throw_sdl("SDL_SetTextureScaleMode failed");
+    }
 }
 
 Texture::Texture(Texture&& other) noexcept = default;
 
 Texture& Texture::operator=(Texture&& other) noexcept = default;
 
-Texture::~Texture() {
-    if (impl_ && impl_->texture != nullptr) {
-        SDL_DestroyTexture(impl_->texture);
-        impl_->texture = nullptr;
-    }
-}
+Texture::~Texture() = default;
 
 int Texture::width() const noexcept {
     return impl_ ? impl_->width : 0;
@@ -46,15 +73,17 @@ int Texture::height() const noexcept {
     return impl_ ? impl_->height : 0;
 }
 
+bool Texture::valid() const noexcept {
+    return impl_ && impl_->texture != nullptr;
+}
+
 void* Texture::native_texture() const noexcept {
     return impl_ ? impl_->texture : nullptr;
 }
 
 std::vector<std::uint8_t> make_checkerboard_rgba(
     int width, int height, Color even, Color odd, int cell_size) {
-    if (width <= 0 || height <= 0) {
-        throw std::runtime_error("Midas checkerboard size must be positive");
-    }
+    check_texture_size(width, height, "Midas checkerboard");
     if (cell_size <= 0) {
         throw std::runtime_error("Midas checkerboard cell size must be positive");
     }

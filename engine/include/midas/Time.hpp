@@ -5,7 +5,10 @@
 
 namespace midas {
 
-/// Fixed 60 Hz timestep. `delta_seconds()` is always `1/60` while the loop is capped.
+/// Fixed 60 Hz timestep. `delta_seconds()` is always `1/60` while the loop is
+/// capped — use that for gameplay (camera pan, motion). `elapsed_seconds()` is
+/// wall-clock time since `run()` started, including sleep; it is *not* a
+/// variable delta.
 class Time {
 public:
     static constexpr int tick_hz = 60;

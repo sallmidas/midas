@@ -96,6 +96,7 @@ struct Input::Impl {
     float mouse_dy{};
     float wheel_y{};
     bool quit{false};
+    bool mouse_initialized{false};
 };
 
 Input::Input() : impl_(std::make_unique<Impl>()) {}
@@ -204,6 +205,14 @@ void Input::handle_native_event(const void* native_event) noexcept {
 void Input::set_mouse_position(float x, float y) noexcept {
     impl_->mouse_x = x;
     impl_->mouse_y = y;
+    if (!impl_->mouse_initialized) {
+        impl_->prev_mouse_x = x;
+        impl_->prev_mouse_y = y;
+        impl_->mouse_dx = 0.0f;
+        impl_->mouse_dy = 0.0f;
+        impl_->mouse_initialized = true;
+        return;
+    }
     impl_->mouse_dx = x - impl_->prev_mouse_x;
     impl_->mouse_dy = y - impl_->prev_mouse_y;
 }

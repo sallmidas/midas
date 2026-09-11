@@ -32,7 +32,8 @@ enum class MouseButton {
 ///
 /// `key_pressed` / `mouse_pressed` are edges (down this tick, up last tick).
 /// Mouse position is in logical render coordinates (same space as unzoomed
-/// world units when the camera is at identity).
+/// world units when the camera is at identity). `mouse_delta()` is zero until
+/// the first real sample so the first tick cannot jump the camera.
 class Input {
 public:
     Input(const Input&) = delete;
