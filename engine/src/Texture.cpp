@@ -3,7 +3,6 @@
 #include "internal/GpuLifetime.hpp"
 #include "internal/Sdl.hpp"
 
-#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <memory>
@@ -104,8 +103,7 @@ std::vector<std::uint8_t> make_checkerboard_rgba(
         if (!std::isfinite(channel)) {
             return 0;
         }
-        const float clamped = std::clamp(channel, 0.0f, 1.0f);
-        return static_cast<std::uint8_t>(clamped * 255.0f + 0.5f);
+        return static_cast<std::uint8_t>(clamp01(channel) * 255.0f + 0.5f);
     };
 
     std::vector<std::uint8_t> pixels(static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4);

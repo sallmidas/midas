@@ -96,7 +96,7 @@ ctest --preset debug
 
 `MIDAS_SMOKE_FRAMES` is an alternative to `--smoke` (must be a positive integer).
 
-If you run the sandbox **without** `--smoke` and the BMP is missing, it prints every directory it searched and uploads a generated checkerboard instead. That fallback is logged; it is not silent.
+If you run the sandbox **without** `--smoke` and the BMP is missing, it prints every directory it searched and uses a generated checkerboard instead. That fallback is logged; it is not silent.
 
 ## CMake presets
 

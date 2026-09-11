@@ -58,7 +58,7 @@ Entity     Lightweight transform + size + optional texture. Not an ECS.
            `Transform::then` composes a child without parent pointers.
 ```
 
-`Types.hpp` defines `Color`, `Vec2`, `Rect`, and NaN-safe `clamp` / `clamp01`. `Color::lerp` mixes two 0–1 colors (`t` is `clamp01`'d). `Vec2::length_squared` is `x*x+y*y` for comparisons without `hypot` (`length()`). `Rect::overlaps` / `Rect::contains` are half-open 2D AABB helpers (shared edges do not overlap). `Rect::contains_inclusive` is the closed test (`[x, x+w] × [y, y+h]`) used for letterbox present bounds. `Rect::expanded` / `Rect::inset` grow or shrink every edge (a large inset can become an empty rect; a NaN amount is a no-op). `Cooldown` (in `Time.hpp`) is remaining-seconds until `ready()`; tick it with `delta_seconds()`. `midas.hpp` is an umbrella include.
+`Types.hpp` defines `Color`, `Vec2`, `Rect`, and NaN-safe `clamp` / `clamp01`. `Color::lerp` mixes two 0–1 colors (`t` is `clamp01`'d). `Vec2::length_squared` is `x*x+y*y` for comparisons without `hypot` (`length()`). `Rect::overlaps` / `Rect::contains` are half-open 2D AABB helpers (shared edges do not overlap). `Rect::contains_inclusive` is the closed test (`[x, x+w] × [y, y+h]`) used for letterbox present bounds. `Rect::expanded` / `Rect::inset` grow or shrink every edge (a large inset can become an empty rect; a NaN amount is a no-op). `Cooldown` (in `Time.hpp`) is remaining-seconds until `ready()`; tick it with `delta_seconds()`. Non-finite `remaining` is expired. `midas.hpp` is the umbrella include (`Cooldown`, `clamp`, `contains_inclusive`, and the rest of the public API).
 
 Games talk only to `Engine` and the types it returns:
 
@@ -168,7 +168,7 @@ The sandbox locates `assets/midas_sprite.bmp` via `Engine::executable_directory(
 
 `Rect` is the 2D AABB (`x, y, w, h` with top-left origin). `contains` is half-open (`[x, x+w) × [y, y+h)`). `overlaps` uses the same edges, so rectangles that only share a boundary do not overlap, and a zero-size rect is empty. `contains_inclusive` is closed (`[x, x+w] × [y, y+h]`) for letterbox present bounds. `expanded(amount)` / `inset(amount)` grow or shrink every edge; a large inset can yield a non-positive size (empty). `Entity::overlaps` is the collision starter. Width/height should stay non-negative.
 
-`Color::lerp(a, b, t)` is the 0–1 mix used by the sandbox plinth (gold toward bronze). `t` is `clamp01`'d (NaN / negative → 0). `clamp` / `clamp01` are the NaN-safe float helpers (`std::clamp` is undefined when `lo > hi`). `Cooldown` is remaining-seconds until `ready()`; tick it with the fixed `delta_seconds()` step.
+`Color::lerp(a, b, t)` is the 0–1 mix used by the sandbox plinth (gold toward bronze). `t` is `clamp01`'d (NaN / negative → 0). `clamp` / `clamp01` are the NaN-safe float helpers (`std::clamp` is undefined when `lo > hi`). `Cooldown` is remaining-seconds until `ready()`; tick it with the fixed `delta_seconds()` step. Non-finite `remaining` is expired (`ready()`, and `tick` snaps it to 0).
 
 ## Dependencies
 

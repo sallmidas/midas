@@ -189,13 +189,14 @@ void self_check_math() {
     const Vec2 top_bar{640.0f, -40.0f};
     const Vec2 bottom_bar{640.0f, 760.0f};
     const Vec2 left_bar{-1.0f, 360.0f};
+    const Vec2 right_bar{1281.0f, 360.0f};
     if (!present.contains({0.0f, 0.0f}) || present.contains(far_edge) || present.contains(far_corner)) {
         throw std::runtime_error("Midas self-check: present-rect half-open contains docs drifted");
     }
     if (!present.contains_inclusive({0.0f, 0.0f}) || !present.contains_inclusive(far_edge) ||
         !present.contains_inclusive(far_corner) || !present.contains_inclusive({640.0f, 720.0f}) ||
         present.contains_inclusive(top_bar) || present.contains_inclusive(bottom_bar) ||
-        present.contains_inclusive(left_bar) ||
+        present.contains_inclusive(left_bar) || present.contains_inclusive(right_bar) ||
         present.contains_inclusive({std::numeric_limits<float>::quiet_NaN(), 360.0f})) {
         throw std::runtime_error("Midas self-check: letterbox present-rect inclusive test failed");
     }
@@ -269,6 +270,14 @@ void self_check_math() {
         cooldown.tick(1.0f);
         if (!cooldown.ready() || cooldown.remaining != 0.0f) {
             throw std::runtime_error("Midas self-check: Cooldown should clamp remaining at 0");
+        }
+        cooldown.remaining = std::numeric_limits<float>::infinity();
+        if (!cooldown.ready()) {
+            throw std::runtime_error("Midas self-check: Cooldown Inf remaining should not block ready");
+        }
+        cooldown.tick(1.0f);
+        if (!cooldown.ready() || cooldown.remaining != 0.0f) {
+            throw std::runtime_error("Midas self-check: Cooldown::tick should snap Inf remaining to 0");
         }
     }
 
@@ -695,9 +704,7 @@ int main(int argc, char** argv) {
 
         if (smoke_ticks > 0) {
             std::cerr << "Midas: smoke completed " << smoke_ticks << " ticks (" << scene.entities.size()
-                      << " entities, " << std::fixed << std::setprecision(0)
-                      << engine.time().frames_per_second()
-                      << " fps, camera/AABB/cooldown self-check ok)\n";
+                      << " entities, camera/AABB/cooldown self-check ok)\n";
         }
         return status;
     } catch (const std::exception& ex) {
