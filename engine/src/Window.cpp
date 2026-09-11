@@ -3,6 +3,7 @@
 #include "internal/Sdl.hpp"
 #include "internal/WindowNative.hpp"
 
+#include <cmath>
 #include <stdexcept>
 #include <utility>
 
@@ -12,6 +13,9 @@ struct Window::Impl {
     std::string title;
     int width{0};
     int height{0};
+    int pixel_width{0};
+    int pixel_height{0};
+    float pixel_density{1.0f};
     Native native;
 
     ~Impl() {
@@ -37,9 +41,15 @@ Window::Window(std::string title, int width, int height)
     impl_->title = std::move(title);
     impl_->width = width;
     impl_->height = height;
+    impl_->pixel_width = width;
+    impl_->pixel_height = height;
+    impl_->pixel_density = 1.0f;
 
+    // HIGH_PIXEL_DENSITY: on macOS/Wayland this is a 2× (or more) framebuffer
+    // while `width`/`height` stay in window coordinates. Logical presentation
+    // still uses EngineConfig; mouse mapping must go through the renderer.
     impl_->native.window = SDL_CreateWindow(impl_->title.c_str(), width, height,
-                                            SDL_WINDOW_RESIZABLE);
+                                            SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
     if (impl_->native.window == nullptr) {
         detail::throw_sdl("SDL_CreateWindow failed");
     }
@@ -60,6 +70,18 @@ int Window::width() const noexcept {
 
 int Window::height() const noexcept {
     return impl_->height;
+}
+
+int Window::pixel_width() const noexcept {
+    return impl_->pixel_width;
+}
+
+int Window::pixel_height() const noexcept {
+    return impl_->pixel_height;
+}
+
+float Window::pixel_density() const noexcept {
+    return impl_->pixel_density;
 }
 
 Window::Native* Window::native() noexcept {
@@ -83,6 +105,20 @@ void Window::sync_size_from_native() noexcept {
         impl_->width = width;
         impl_->height = height;
     }
+
+    int pixel_width = 0;
+    int pixel_height = 0;
+    if (SDL_GetWindowSizeInPixels(impl_->native.window, &pixel_width, &pixel_height) &&
+        pixel_width > 0 && pixel_height > 0) {
+        impl_->pixel_width = pixel_width;
+        impl_->pixel_height = pixel_height;
+    } else if (impl_->width > 0 && impl_->height > 0) {
+        impl_->pixel_width = impl_->width;
+        impl_->pixel_height = impl_->height;
+    }
+
+    const float density = SDL_GetWindowPixelDensity(impl_->native.window);
+    impl_->pixel_density = (std::isfinite(density) && density > 0.0f) ? density : 1.0f;
 }
 
 }  // namespace midas

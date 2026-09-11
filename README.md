@@ -46,11 +46,11 @@ If SDL3 is not installed, CMake fetches **SDL3 3.4.16** automatically (needs net
 | **WASD** / arrow keys | Pan (constant screen-space speed) |
 | Right mouse drag | Pan with the cursor |
 | **Q** / **E** | Zoom out / in around the view center |
-| Mouse wheel | Zoom toward the cursor |
+| Mouse wheel | Zoom toward the cursor (skipped in letterbox bars) |
 | **Space** | Reset pan and zoom to the identity logical view |
 | **F1** or **`** | Toggle the screen-space debug HUD (off during `--smoke`) |
 
-Zoom is uniform and clamped to **0.25–8**. The view is aspect-correct: the visible world matches the 1280×720 logical window. The OS window is resizable; letterboxing keeps that logical view undistorted (camera math uses `Renderer::logical_size()`, not the live window size).
+Zoom is uniform and clamped to **0.25–8**. The view is aspect-correct: the visible world matches the 1280×720 logical window. The OS window is resizable and high-DPI; letterboxing keeps that logical view undistorted (camera and mouse use `Renderer::logical_size()`, not the live window size and not the framebuffer pixel size). Interactive mode logs those three sizes once at startup.
 
 Headless smoke (a few 60 Hz ticks, then exit):
 
@@ -59,6 +59,6 @@ SDL_VIDEODRIVER=dummy ./build/debug/bin/midas_sandbox --smoke
 # or: ctest --preset debug
 ```
 
-`--smoke` also runs camera/AABB/`Color::lerp`/`Vec2::length_squared`/`Rect::expanded` self-checks and **requires** `assets/midas_sprite.bmp` next to the binary (CMake copies it there; `cmake --install` places it beside the installed sandbox). A missing copy is an error in smoke mode even if a BMP exists in the source tree. In an interactive run a missing BMP logs where it looked and falls back to a generated checkerboard. The HUD is skipped in smoke so the dummy video driver does not need debug text.
+`--smoke` also runs camera/AABB/`Color::lerp`/`clamp`/`Vec2::length_squared`/`Rect::expanded` self-checks and **requires** `assets/midas_sprite.bmp` next to the binary (CMake copies it there; `cmake --install` places it beside the installed sandbox). A missing copy is an error in smoke mode even if a BMP exists in the source tree. In an interactive run a missing BMP logs where it looked and falls back to a generated checkerboard. The HUD is skipped in smoke so the dummy video driver does not need debug text, and the logical/window/pixel size line is skipped so smoke output stays deterministic.
 
 See [docs/BUILDING.md](docs/BUILDING.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

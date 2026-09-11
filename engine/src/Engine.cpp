@@ -3,6 +3,7 @@
 #include "internal/RendererNative.hpp"
 #include "internal/Sdl.hpp"
 
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <utility>
@@ -51,8 +52,11 @@ struct Engine::Impl {
 
 Engine::Engine(EngineConfig config) : impl_(std::make_unique<Impl>(std::move(config))) {
     // Renderer already copied the created size as logical present. OS size
-    // may already differ (tiling WM); keep them as separate numbers.
+    // and pixel density may already differ (tiling WM, Retina); keep them as
+    // separate numbers. Re-apply letterbox now so the high-DPI framebuffer
+    // is mapped before the first tick (PIXEL_SIZE_CHANGED may still be queued).
     impl_->window.sync_size_from_native();
+    impl_->renderer.reapply_logical_presentation();
 }
 
 Engine::~Engine() = default;  // Impl member order: Renderer, then Window, then SDL_Quit.
@@ -113,7 +117,8 @@ void Engine::pump_events() {
     SDL_Event event{};
     while (SDL_PollEvent(&event)) {
         if (event.type == SDL_EVENT_WINDOW_RESIZED ||
-            event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) {
+            event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED ||
+            event.type == SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED) {
             impl_->window.sync_size_from_native();
             impl_->renderer.reapply_logical_presentation();
         }
@@ -123,14 +128,26 @@ void Engine::pump_events() {
         impl_->input.handle_native_event(&event);
     }
 
+    // SDL_GetMouseState is **window coordinates**, not logical present pixels
+    // and not framebuffer pixels. On a 2× panel, window (640,360) is the
+    // center of a 1280×720 client; the drawable may be 2560×1440. Feeding
+    // those window coords (or pixels) straight to Camera::zoom_toward is
+    // wrong whenever letterbox or dpi_scale is not 1:1.
+    //
+    // SDL_RenderCoordinatesFromWindow applies pixel density *and* logical
+    // letterbox. If it fails, keep the last logical sample — do not fall
+    // back to window coords (that is the classic high-DPI / resize bug).
     if (sdl_renderer != nullptr) {
-        float mouse_x = 0.0f;
-        float mouse_y = 0.0f;
-        (void)SDL_GetMouseState(&mouse_x, &mouse_y);
-        float logical_x = mouse_x;
-        float logical_y = mouse_y;
-        (void)SDL_RenderCoordinatesFromWindow(sdl_renderer, mouse_x, mouse_y, &logical_x, &logical_y);
-        impl_->input.set_mouse_position(logical_x, logical_y);
+        float window_x = 0.0f;
+        float window_y = 0.0f;
+        (void)SDL_GetMouseState(&window_x, &window_y);
+        float logical_x = 0.0f;
+        float logical_y = 0.0f;
+        if (SDL_RenderCoordinatesFromWindow(sdl_renderer, window_x, window_y, &logical_x,
+                                            &logical_y) &&
+            std::isfinite(logical_x) && std::isfinite(logical_y)) {
+            impl_->input.set_mouse_position(logical_x, logical_y);
+        }
     }
 }
 

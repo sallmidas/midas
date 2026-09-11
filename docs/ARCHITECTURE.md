@@ -18,18 +18,24 @@ Engine     Owns the SDL video subsystem and the subsystems below.
            Runs a capped 60 Hz tick loop and pumps OS events.
            `executable_directory()` is SDL_GetBasePath (asset lookup).
 Window     OS window (size, title). Native SDL handles stay private.
-           `width` / `height` follow the live client size (the window is
-           resizable). After a resize they can differ from the logical present
-           size — camera and mouse still use `Renderer::logical_*`.
+           `width` / `height` are live **window coordinates** (resizable).
+           `pixel_width` / `pixel_height` are the drawable; `pixel_density()`
+           is pixels per window coordinate (often 2 on Retina). After a resize
+           or DPI change these diverge from the logical present size — camera
+           and mouse still use `Renderer::logical_*`. Do not scale mouse by
+           `pixel_density()`.
 Input      Keyboard + mouse (down / pressed this tick), wheel, quit (close box).
-           Mouse position is in logical render coordinates.
+           Mouse position is in logical render coordinates (not window coords
+           and not framebuffer pixels).
            `mouse_delta()` is zero until the first real sample, on focus gain,
-           and while unfocused. Mouse/wheel deltas are clamped (no warp jumps).
+           on resize / DPI change, and while unfocused. Mouse/wheel deltas are
+           clamped (no warp jumps).
            Focus loss releases held keys and buttons (`window_focused()`).
            Focus gain re-reads OS key/button state so held WASD still pans
            without synthesizing key_pressed (Escape / F1 / Space).
-           Unfocused key/button events are ignored. A resize zeros mouse_delta
-           so letterbox remapping cannot jump a right-drag pan.
+           Unfocused key/button events are ignored. A resize or display-scale
+           change zeros mouse_delta so letterbox remapping cannot jump a
+           right-drag pan.
 Time       Fixed timestep: `Time::tick_hz == 60`, `delta_seconds() == 1/60`
            (use this for motion). `elapsed_seconds()` is wall-clock.
            `frame_seconds()` / `frames_per_second()` are the last tick's wall
@@ -50,7 +56,7 @@ Entity     Lightweight transform + size + optional texture. Not an ECS.
            `Transform::then` composes a child without parent pointers.
 ```
 
-`Types.hpp` defines `Color`, `Vec2`, and `Rect`. `Color::lerp` mixes two 0–1 colors (`t` clamped to `[0, 1]`). `Vec2::length_squared` is `x*x+y*y` for comparisons without `hypot` (`length()`). `Rect::overlaps` / `Rect::contains` are half-open 2D AABB helpers (shared edges do not overlap). `Rect::expanded` / `Rect::inset` grow or shrink every edge (a large inset can become an empty rect). `midas.hpp` is an umbrella include.
+`Types.hpp` defines `Color`, `Vec2`, `Rect`, and NaN-safe `clamp` / `clamp01`. `Color::lerp` mixes two 0–1 colors (`t` is `clamp01`'d). `Vec2::length_squared` is `x*x+y*y` for comparisons without `hypot` (`length()`). `Rect::overlaps` / `Rect::contains` are half-open 2D AABB helpers (shared edges do not overlap). `Rect::expanded` / `Rect::inset` grow or shrink every edge (a large inset can become an empty rect; a NaN amount is a no-op). `midas.hpp` is an umbrella include.
 
 Games talk only to `Engine` and the types it returns:
 
@@ -98,8 +104,8 @@ Destroy a `Texture` before the `Renderer` / `Engine` that created it. `Texture` 
 Each tick:
 
 1. Snapshot previous keyboard and mouse-button state (`key_pressed` / `mouse_pressed` are edges). Reset wheel delta.
-2. Pump SDL events into `Input` (mouse events converted to logical render coordinates).
-3. Sample `SDL_GetMouseState` and convert window pixels → logical coordinates.
+2. Pump SDL events into `Input`. Resize, pixel-size, and display-scale changes re-apply letterbox presentation and zero mouse delta. Mouse events are converted to logical coordinates.
+3. Sample `SDL_GetMouseState` (**window coordinates**, not framebuffer pixels) and convert through `SDL_RenderCoordinatesFromWindow` (pixel density + letterbox → logical). A failed conversion keeps the last logical sample — it does not fall back to window or pixel coords, which would break `Camera::zoom_toward` on a high-DPI or letterboxed window.
 4. Stop if quit was requested.
 5. Invoke the tick callback (update + render).
 6. Advance `Time::tick_index()`.
@@ -108,14 +114,14 @@ Each tick:
 
 Gameplay must use `delta_seconds()` (fixed `1/60`), not `frame_seconds()`. A hitch then does not fling the camera; the HUD can still show the dip in FPS.
 
-The renderer uses SDL3 logical presentation (`SDL_LOGICAL_PRESENTATION_LETTERBOX`) so drawing stays in the configured window coordinates (`EngineConfig` width × height, 1280×720 in the sandbox). The OS window is **resizable**; letterboxing is re-applied on `WINDOW_RESIZED` / `PIXEL_SIZE_CHANGED` so a driver cannot drop the mapping.
+The renderer uses SDL3 logical presentation (`SDL_LOGICAL_PRESENTATION_LETTERBOX`) so drawing stays in the configured window coordinates (`EngineConfig` width × height, 1280×720 in the sandbox). The OS window is **resizable** and created with `SDL_WINDOW_HIGH_PIXEL_DENSITY`. Letterboxing is re-applied on `WINDOW_RESIZED` / `PIXEL_SIZE_CHANGED` / `DISPLAY_SCALE_CHANGED` so a driver cannot drop the mapping.
 
-- **Matching aspect (typical Retina / Apple Silicon):** the drawable has more pixels, but the aspect matches, so there are no bars — each logical pixel covers several drawable pixels.
+- **Matching aspect (typical Retina / Apple Silicon):** the drawable has more pixels (`Window::pixel_density()` often 2), but the aspect matches, so there are no bars — each logical pixel covers several drawable pixels.
 - **Mismatched aspect (resized window, odd display):** black bars pad the extra drawable region. The logical 1280×720 rectangle is undistorted in the middle.
-- **`Window` vs `Renderer`:** `Window::width/height` track the live client size. `Renderer::logical_width/height` (and `logical_size()`) stay at the `EngineConfig` size. They start equal and diverge after a resize.
-- **Mouse:** `Engine` converts window pixels → logical coordinates (`SDL_ConvertEventToRenderCoordinates` / `SDL_RenderCoordinatesFromWindow`). Pointers in the bars fall outside `0 .. logical_width/height`. A resize zeros `mouse_delta` so the remapping cannot jump a right-drag pan.
-- **Camera:** always pass `Renderer::logical_width/height` as the viewport, never `Window::width/height` and never raw drawable pixels. World fills and textures share `Camera::project`, so a gold square and a gold-tinted sprite of the same world rect stay aligned at any zoom. Tint is a per-texel multiply, not a function of dest size.
-- **HUD:** `fill_screen_rect` and `draw_debug_text` skip the camera so an overlay does not pan or zoom with the world. The sandbox draws FPS, camera position, zoom, and a one-line WASD/zoom/Space/F1 legend this way; **F1** or **`** toggles it. `--smoke` leaves it off so CI does not depend on debug text. Debug text failure is ignored (dummy drivers). The HUD banner uses `Rect::expanded` for padding.
+- **Three sizes:** `Renderer::logical_width/height` stay at the `EngineConfig` size (camera, mouse, drawing). `Window::width/height` track the live client in window coordinates. `Window::pixel_width/height` track the framebuffer. They start similar and diverge after a resize or on a high-DPI panel. Never multiply mouse coordinates by `pixel_density()` — the engine mapping already includes it.
+- **Mouse:** `Engine` converts window coordinates → logical (`SDL_ConvertEventToRenderCoordinates` / `SDL_RenderCoordinatesFromWindow`). Pointers in the bars fall outside `0 .. logical_width/height`. A resize or DPI change zeros `mouse_delta` so the remapping cannot jump a right-drag pan.
+- **Camera:** always pass `Renderer::logical_width/height` as the viewport, never `Window::width/height` and never `pixel_width/height`. `zoom_toward` takes the same logical space as `Input::mouse_position()`. World fills and textures share `Camera::project`, so a gold square and a gold-tinted sprite of the same world rect stay aligned at any zoom. Tint is a per-texel multiply, not a function of dest size.
+- **HUD:** `fill_screen_rect` and `draw_debug_text` skip the camera so an overlay does not pan or zoom with the world. The sandbox draws FPS, camera position, zoom, and a one-line WASD/zoom/Space/F1 legend this way; **F1** or **`** toggles it. `--smoke` leaves it off so CI does not depend on debug text. Debug text failure is ignored (dummy drivers). The HUD banner uses `Rect::expanded` for padding. Interactive mode logs logical vs window vs pixel size once at startup; `--smoke` does not.
 
 ## Camera
 
@@ -123,9 +129,9 @@ The renderer uses SDL3 logical presentation (`SDL_LOGICAL_PRESENTATION_LETTERBOX
 
 Visible world size is `(logical_w / zoom)` by `(logical_h / zoom)`, so the view aspect matches the logical window (aspect-correct ortho). Circles stay circles; letterboxing handles a window whose pixel aspect differs.
 
-The renderer starts with `zoom == 1` and `position` at the viewport center, so world units match logical pixels until the game moves the camera. `fill_rect` and `draw_texture` take world rectangles; `Camera::project` maps them to the screen. `Camera::zoom_toward` scales around a screen point (mouse-wheel zoom) and ignores non-positive multipliers. Projection uses `clamped_zoom()` so a zero/NaN zoom cannot divide by zero.
+The renderer starts with `zoom == 1` and `position` at the viewport center, so world units match logical pixels until the game moves the camera. `fill_rect` and `draw_texture` take world rectangles; `Camera::project` maps them to the screen. `Camera::zoom_toward` scales around a **logical** screen point (`Input::mouse_position()`, not window or framebuffer pixels) and ignores non-positive multipliers. Projection uses `clamped_zoom()` so a zero/NaN zoom cannot divide by zero.
 
-The sandbox pans with WASD / arrows (or right-mouse drag) at constant **screen-space** speed (`pan / zoom`) and zooms with Q/E or the wheel. **Space** resets to the identity view for the current logical viewport (center, zoom 1) and sanitizes pan/zoom so a NaN cannot stick; the same tick does not also apply WASD/wheel/drag. **Esc** requests quit and returns before `present`. Held WASD and the right mouse button are released if the window loses focus, so the camera cannot keep sliding while you are in another app. Coming back into focus re-reads the OS keyboard and mouse buttons, so a still-held W resumes pan without needing a new key-down — and without synthesizing a `key_pressed` edge (Escape would quit, F1 would toggle the HUD). Key/button events while unfocused are ignored. Mouse-wheel and right-drag deltas are clamped so a cursor warp or a wild trackpad burst cannot jump the view. A HUD in the top-left shows the fixed `dt`, wall-clock FPS, camera, and a one-line control legend (toggle with F1 or backtick).
+The sandbox pans with WASD / arrows (or right-mouse drag) at constant **screen-space** speed (`pan / zoom`) and zooms with Q/E or the wheel (wheel zoom is skipped while the cursor is in a letterbox bar). **Space** resets to the identity view for the current logical viewport (center, zoom 1) and sanitizes pan/zoom so a NaN cannot stick; the same tick does not also apply WASD/wheel/drag. **Esc** requests quit and returns before `present`. Held WASD and the right mouse button are released if the window loses focus, so the camera cannot keep sliding while you are in another app. Coming back into focus re-reads the OS keyboard and mouse buttons, so a still-held W resumes pan without needing a new key-down — and without synthesizing a `key_pressed` edge (Escape would quit, F1 would toggle the HUD). Key/button events while unfocused are ignored. Mouse-wheel and right-drag deltas are clamped so a cursor warp or a wild trackpad burst cannot jump the view. A HUD in the top-left shows the fixed `dt`, wall-clock FPS, camera, and a one-line control legend (toggle with F1 or backtick).
 
 ## Textures
 
@@ -148,7 +154,7 @@ The sandbox locates `assets/midas_sprite.bmp` via `Engine::executable_directory(
 
 `Rect` is the 2D AABB (`x, y, w, h` with top-left origin). `contains` is half-open (`[x, x+w) × [y, y+h)`). `overlaps` uses the same edges, so rectangles that only share a boundary do not overlap, and a zero-size rect is empty. `expanded(amount)` / `inset(amount)` grow or shrink every edge; a large inset can yield a non-positive size (empty). `Entity::overlaps` is the collision starter. Width/height should stay non-negative.
 
-`Color::lerp(a, b, t)` is the 0–1 mix used by the sandbox plinth (gold toward bronze). `t` outside `[0, 1]` or NaN is clamped.
+`Color::lerp(a, b, t)` is the 0–1 mix used by the sandbox plinth (gold toward bronze). `t` is `clamp01`'d (NaN / negative → 0). `clamp` / `clamp01` are the NaN-safe float helpers (`std::clamp` is undefined when `lo > hi`).
 
 ## Dependencies
 

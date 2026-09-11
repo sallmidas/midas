@@ -18,7 +18,9 @@ namespace midas {
 /// window / logical pixels (the default the renderer starts with). Always pass
 /// `Renderer::logical_width/height` as the viewport — after a window resize
 /// those stay at the letterboxed `EngineConfig` size, while `Window::width`
-/// follows the OS client area.
+/// follows the OS client area and `Window::pixel_width` follows the
+/// framebuffer (often 2× on Retina). Mouse `zoom_toward` points come from
+/// `Input::mouse_position()` (already logical).
 ///
 /// Zoom is kept in `[min_zoom, max_zoom]`. Projection uses a sanitized zoom so
 /// a zero/NaN zoom cannot divide by zero; call `sanitize()` after writing
@@ -89,6 +91,10 @@ struct Camera {
     }
 
     /// Multiply zoom, keeping `screen_point` over the same world point (cursor zoom).
+    /// `screen_point` and `viewport_w`/`viewport_h` are **logical present pixels**
+    /// (`Input::mouse_position()` and `Renderer::logical_size()`). Window
+    /// coordinates and framebuffer pixels are the wrong space on a high-DPI
+    /// or letterboxed window.
     /// `multiplier` must be finite and positive; values that would exceed the
     /// zoom limits are clamped (the view stops, it does not wrap).
     void zoom_toward(Vec2 screen_point, float multiplier, float viewport_w, float viewport_h) noexcept {
