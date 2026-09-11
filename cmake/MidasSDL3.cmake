@@ -1,5 +1,6 @@
-# Prefer an installed SDL3 (Homebrew on macOS Apple Silicon, or a system package).
-# If none is found, fetch SDL3 3.4.16 via CMake FetchContent.
+# Prefer an installed SDL3 (Homebrew on macOS / Linuxbrew, or a system package
+# such as Debian/Ubuntu `libsdl3-dev`). If none is found, fetch SDL3 3.4.16 via
+# CMake FetchContent.
 
 set(MIDAS_SDL3_FETCH_VERSION "3.4.16")
 

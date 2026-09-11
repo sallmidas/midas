@@ -1,8 +1,10 @@
-# Building Midas (macOS Apple Silicon)
+# Building Midas (macOS and Linux)
 
-The engine is C++20. SDL3 is C, so the top-level CMake project enables both languages. The supported developer setup is **macOS on Apple Silicon** (M-series) with Homebrew.
+The engine is C++20. SDL3 is C, so the top-level CMake project enables both languages. Debug and release Ninja presets are the supported build paths on **macOS** (Apple Silicon or Intel) and **Linux**.
 
 ## Prerequisites
+
+### macOS (Apple Silicon / Intel)
 
 Install Xcode Command Line Tools, then:
 
@@ -13,15 +15,31 @@ brew install cmake ninja sdl3
 
 - **CMake** 3.21 or newer (presets version 3)
 - **Ninja** (the `debug` and `release` preset generator)
-- **SDL3** via Homebrew (`brew install sdl3`), typically under `/opt/homebrew`
+- **SDL3** via Homebrew (`brew install sdl3`), typically under `/opt/homebrew` (Apple Silicon) or `/usr/local` (Intel)
 
 Apple clang from Command Line Tools is enough (`c++` / `clang++` with `-std=c++20`).
 
-If you skip `sdl3`, configure still succeeds: CMake downloads **SDL3 3.4.16** with FetchContent.
+### Linux (Debian / Ubuntu)
+
+```bash
+sudo apt install cmake ninja-build g++ pkg-config
+```
+
+`clang` works as well. SDL3 is optional: many distros still ship only SDL2, in which case CMake downloads SDL3 via FetchContent. If your distro has SDL3 3.x:
+
+```bash
+sudo apt install libsdl3-dev
+```
+
+Headless / CI machines do not need a display server. FetchContent sets `SDL_UNIX_CONSOLE_BUILD` on Linux so SDL3 can build with the dummy video driver.
+
+### SDL3 via FetchContent
+
+If you skip an installed SDL3, configure still succeeds: CMake downloads **SDL3 3.4.16** the first time (network required). Later configures reuse the build tree.
 
 ## Configure and build
 
-From the repository root:
+From the repository root, same commands on macOS and Linux:
 
 ```bash
 cmake --preset debug
@@ -48,24 +66,29 @@ cmake --build --preset release
 
 ## Run
 
-The sandbox clears to charcoal, draws a solid gold square, and draws a textured checkerboard quad beside it.
+The sandbox clears to charcoal and draws a small gold/bronze scene: a tiled floor strip, a solid gold square, the BMP sprite, a gold-tinted copy of that sprite, a half-scale child sprite (`Transform::then`), and corner markers so pan/zoom has landmarks.
 
 | Input | Action |
 | --- | --- |
 | **Esc** or close the window | Quit |
-| **WASD** / arrow keys | Pan the camera |
+| **WASD** / arrow keys | Pan the camera (screen-space speed is constant across zoom) |
 | Right mouse drag | Pan the camera |
-| **Q** / **E** | Zoom out / in (view center) |
-| Mouse wheel | Zoom toward the cursor |
+| **Q** / **E** | Zoom out / in around the view center (clamped to 0.25–8) |
+| Mouse wheel | Zoom toward the cursor (same clamp) |
 | **Space** | Reset pan and zoom |
 
-Headless / CI smoke (a few 60 Hz ticks, then exit):
+Textures use **nearest-neighbor** sampling so the BMP stays sharp when zoomed.
+
+Headless / CI smoke (a few 60 Hz ticks, then exit). This path also runs camera and AABB self-checks and fails if the BMP was not copied next to the binary:
 
 ```bash
 SDL_VIDEODRIVER=dummy ./build/debug/bin/midas_sandbox --smoke
+ctest --test-dir build/debug --output-on-failure
 ```
 
-`MIDAS_SMOKE_FRAMES` is an alternative to `--smoke` (must be a positive integer). If the BMP is missing, the sandbox generates the same checkerboard on the CPU and uploads it with `create_texture`.
+`MIDAS_SMOKE_FRAMES` is an alternative to `--smoke` (must be a positive integer).
+
+If you run the sandbox **without** `--smoke` and the BMP is missing, it prints every directory it searched and uploads a generated checkerboard instead. That fallback is logged; it is not silent.
 
 ## CMake presets
 
@@ -74,20 +97,23 @@ SDL_VIDEODRIVER=dummy ./build/debug/bin/midas_sandbox --smoke
 | `debug` | Debug | Ninja | `build/debug` |
 | `release` | Release | Ninja | `build/release` |
 
-Example without presets:
+Both presets set `CMAKE_EXPORT_COMPILE_COMMANDS=ON`. Example without presets:
 
 ```bash
 cmake -S . -B build/debug -G Ninja -DCMAKE_BUILD_TYPE=Debug
 cmake --build build/debug
 ```
 
+On Linux, the sandbox `BUILD_RPATH` is `$ORIGIN` so a shared libSDL3 placed next to the binary can be found. On macOS it includes `@executable_path` plus Homebrew prefixes.
+
 ## Homebrew vs FetchContent
 
 `cmake/MidasSDL3.cmake` prefers an installed SDL3 config package:
 
-1. `brew --prefix sdl3` when Homebrew is on `PATH`
+1. `brew --prefix sdl3` when Homebrew is on `PATH` (macOS, or Linuxbrew)
 2. `/opt/homebrew` (Apple Silicon default prefix)
 3. `/usr/local` (Intel Homebrew / manual installs)
-4. FetchContent of [SDL 3.4.16](https://github.com/libsdl-org/SDL/releases/tag/release-3.4.16)
+4. `find_package(SDL3)` on the default CMake prefix (Linux `libsdl3-dev`)
+5. FetchContent of [SDL 3.4.16](https://github.com/libsdl-org/SDL/releases/tag/release-3.4.16)
 
-Reconfigure after `brew install sdl3` so CMake can pick up the keg instead of the pinned tarball.
+Reconfigure after `brew install sdl3` (or `apt install libsdl3-dev`) so CMake can pick up the keg / package instead of the pinned tarball.
