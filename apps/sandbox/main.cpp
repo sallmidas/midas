@@ -162,6 +162,10 @@ void self_check_math() {
     if (std::abs(camera.clamped_zoom() - 1.0f) > 0.0f) {
         throw std::runtime_error("Midas self-check: NaN zoom should sanitize to 1");
     }
+    camera.zoom = std::numeric_limits<float>::infinity();
+    if (std::abs(camera.clamped_zoom() - 1.0f) > 0.0f) {
+        throw std::runtime_error("Midas self-check: Inf zoom should sanitize to 1");
+    }
     camera.position = {std::numeric_limits<float>::quiet_NaN(), 10.0f};
     camera.zoom = 1.0f;
     {

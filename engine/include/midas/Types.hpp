@@ -22,7 +22,7 @@ namespace midas {
     return value;
 }
 
-/// `clamp(value, 0, 1)`. NaN / negative → 0.
+/// `clamp(value, 0, 1)`. NaN / negative → 0; Inf / above 1 → 1.
 [[nodiscard]] constexpr float clamp01(float value) noexcept {
     return clamp(value, 0.0f, 1.0f);
 }
