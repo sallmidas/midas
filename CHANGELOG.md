@@ -2,7 +2,13 @@
 
 Bullet highlights from the 2D engine fine-tunes on `main`. No 3D / ECS / editor.
 
-## Unreleased (pass 14)
+## Unreleased (pass 15)
+
+- CHANGELOG records pass 14 as landed on `main`.
+- BUILDING: one-paragraph “How to run on Saul’s Mac” (Homebrew `sdl3`, `cmake --preset debug`, `midas_sandbox`).
+- Startup-log docs match the printed `logical / window / pixels / density` line (leftover “three sizes” wording). Engine mouse-mapping comment uses `pixel_density()`, not `dpi_scale`.
+
+## Pass 14
 
 - Linux FetchContent path is unchanged by the keg-order fix: `/opt/homebrew` and `/usr/local` prepends stay macOS-only; configure logs when `brew` is absent (or the sdl3 keg is missing).
 - CHANGELOG records pass 13 as landed on `main`; README layout line no longer hardcodes a stale pass range.

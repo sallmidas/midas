@@ -2,6 +2,10 @@
 
 The engine is C++20. SDL3 is C, so the top-level CMake project enables both languages. Debug and release Ninja presets are the supported build paths on **macOS** (Apple Silicon or Intel) and **Linux**.
 
+## How to run on Saul’s Mac
+
+On Apple Silicon with Homebrew on `PATH`: `brew install cmake ninja sdl3`, then from the repo root `cmake --preset debug`, `cmake --build --preset debug`, and `./build/debug/bin/midas_sandbox`. CMake should resolve the keg via `brew --prefix sdl3` (`/opt/homebrew/opt/sdl3`) rather than FetchContent. Headless check: `ctest --preset debug`, or `SDL_VIDEODRIVER=dummy ./build/debug/bin/midas_sandbox --smoke`.
+
 ## Prerequisites
 
 ### macOS (Apple Silicon / Intel)
@@ -72,7 +76,7 @@ cmake --build --preset release
 
 ## Run
 
-The sandbox clears to charcoal and draws a small gold/bronze scene: a tiled floor strip, a solid gold square (easing toward bronze with `Color::lerp`), the BMP sprite, a gold-tinted copy of that sprite, a half-scale child sprite (`Transform::then`), and corner markers so pan/zoom has landmarks. A screen-space HUD (top-left) shows the fixed 60 Hz `dt`, wall-clock FPS, camera, and a one-line WASD/zoom/Space/F1 legend — it does not pan with the world. The banner padding uses `Rect::expanded`. **F1** or **`** hides it (handy for demos). `--smoke` leaves the HUD off so the dummy driver never has to draw debug text. The window is resizable and high-DPI (`SDL_WINDOW_HIGH_PIXEL_DENSITY`); the 1280×720 **logical present** view is letterboxed. Camera and mouse use that logical size, not live window coordinates and not framebuffer pixels. Wheel zoom uses the closed present rect (`contains_inclusive`) so only letterbox bars are skipped. Interactive mode logs logical vs window vs pixel size once at startup.
+The sandbox clears to charcoal and draws a small gold/bronze scene: a tiled floor strip, a solid gold square (easing toward bronze with `Color::lerp`), the BMP sprite, a gold-tinted copy of that sprite, a half-scale child sprite (`Transform::then`), and corner markers so pan/zoom has landmarks. A screen-space HUD (top-left) shows the fixed 60 Hz `dt`, wall-clock FPS, camera, and a one-line WASD/zoom/Space/F1 legend — it does not pan with the world. The banner padding uses `Rect::expanded`. **F1** or **`** hides it (handy for demos). `--smoke` leaves the HUD off so the dummy driver never has to draw debug text. The window is resizable and high-DPI (`SDL_WINDOW_HIGH_PIXEL_DENSITY`); the 1280×720 **logical present** view is letterboxed. Camera and mouse use that logical size, not live window coordinates and not framebuffer pixels. Wheel zoom uses the closed present rect (`contains_inclusive`) so only letterbox bars are skipped. Interactive mode logs `logical / window / pixels / density` once at startup.
 
 | Input | Action |
 | --- | --- |

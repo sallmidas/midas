@@ -56,7 +56,7 @@ If SDL3 is not installed, CMake fetches **SDL3 3.4.16** automatically (needs net
 | **Space** | Reset pan and zoom to the identity logical view |
 | **F1** or **`** | Toggle the screen-space debug HUD (off during `--smoke`) |
 
-Zoom is uniform and clamped to **0.25–8**. The view is aspect-correct: the visible world matches the 1280×720 **logical present** size. The OS window is resizable and high-DPI; letterboxing keeps that logical view undistorted. Camera and mouse use `Renderer::logical_size()` (logical present pixels), not live `Window::width/height` (window coordinates) and not `Window::pixel_width/height` (framebuffer). Interactive mode logs those three sizes once at startup. Wheel zoom uses the closed present rect (`Rect::contains_inclusive`) so the far edges of the view still zoom — only letterbox bars are skipped.
+Zoom is uniform and clamped to **0.25–8**. The view is aspect-correct: the visible world matches the 1280×720 **logical present** size. The OS window is resizable and high-DPI; letterboxing keeps that logical view undistorted. Camera and mouse use `Renderer::logical_size()` (logical present pixels), not live `Window::width/height` (window coordinates) and not `Window::pixel_width/height` (framebuffer). Interactive mode logs `logical / window / pixels / density` once at startup. Wheel zoom uses the closed present rect (`Rect::contains_inclusive`) so the far edges of the view still zoom — only letterbox bars are skipped.
 
 Headless smoke (a few 60 Hz ticks, then exit):
 
