@@ -33,12 +33,18 @@ enum class MouseButton {
 /// Keyboard and mouse snapshot for the current tick.
 ///
 /// `key_pressed` / `mouse_pressed` are edges (down this tick, up last tick).
-/// Mouse position is in logical render coordinates (same space as unzoomed
-/// world units when the camera is at identity). `mouse_delta()` is zero until
-/// the first real sample, on focus gain, on resize, and while the window is
-/// unfocused, so a cursor warp or letterbox remap cannot jump the camera.
-/// Per-tick mouse and wheel deltas are also clamped — a huge OS jump still
-/// pans/zooms a bounded amount.
+/// Mouse position is in **logical present pixels** (the `EngineConfig` /
+/// `Renderer::logical_size` space — same space as unzoomed world units when
+/// the camera is at identity). The engine maps SDL window coordinates through
+/// `SDL_RenderCoordinatesFromWindow` (letterbox + pixel density). Do **not**
+/// multiply by `Window::pixel_density()` and do not pass `Window::width`
+/// or pixel size to `Camera::zoom_toward`. Letterbox bars can yield a point
+/// slightly outside `[0, logical_w) × [0, logical_h)`.
+///
+/// `mouse_delta()` is zero until the first real sample, on focus gain, on
+/// resize / DPI change, and while the window is unfocused, so a cursor warp
+/// or letterbox remap cannot jump the camera. Per-tick mouse and wheel deltas
+/// are also clamped — a huge OS jump still pans/zooms a bounded amount.
 ///
 /// Focus loss releases held keys/buttons. Focus gain re-reads the OS keyboard
 /// and mouse-button state so WASD still pans if you alt-tab back with a key
@@ -46,8 +52,8 @@ enum class MouseButton {
 /// `previous` so focus gain does not synthesize `key_pressed` / `mouse_pressed`
 /// (that would quit on still-held Escape or toggle the HUD on still-held F1).
 /// Key/button events while unfocused are ignored (sync on gain is the source
-/// of truth). A window resize zeros mouse delta so letterbox remapping cannot
-/// jump a right-drag pan.
+/// of truth). A window resize or display-scale / pixel-size change zeros mouse
+/// delta so letterbox remapping cannot jump a right-drag pan.
 class Input {
 public:
     Input(const Input&) = delete;

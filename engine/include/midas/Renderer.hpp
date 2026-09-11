@@ -21,11 +21,12 @@ class Window;
 ///
 /// Drawing happens in a **logical** 2D space (`logical_width` × `logical_height`,
 /// the `EngineConfig` window size). SDL letterboxes that onto the real drawable
-/// (`SDL_LOGICAL_PRESENTATION_LETTERBOX`): black bars if the window pixel aspect
-/// differs; extra pixels on a Retina panel whose aspect still matches. Camera
-/// math and mouse coordinates use this logical size, not raw drawable pixels
-/// and not the live `Window` size after a resize. HUD helpers
-/// (`fill_screen_rect`, `draw_debug_text`) skip the camera.
+/// (`SDL_LOGICAL_PRESENTATION_LETTERBOX`): black bars if the window aspect
+/// differs; extra framebuffer pixels on a Retina panel (`Window::pixel_density`
+/// often 2) whose window aspect still matches. Camera math and mouse
+/// coordinates use this logical size, not `Window::width` after a resize and
+/// not `Window::pixel_width`. HUD helpers (`fill_screen_rect`,
+/// `draw_debug_text`) skip the camera.
 class Renderer {
 public:
     Renderer(const Renderer&) = delete;
@@ -68,7 +69,7 @@ public:
     /// positions and of `Camera` viewport arguments). This is the
     /// `EngineConfig` window size; it does **not** follow OS resizes.
     /// Letterboxing pads the extra drawable. Pass these (or `logical_size()`)
-    /// to `Camera`, never `Window::width/height`.
+    /// to `Camera`, never `Window::width/height` or `pixel_width/height`.
     [[nodiscard]] int logical_width() const noexcept;
     [[nodiscard]] int logical_height() const noexcept;
     [[nodiscard]] Vec2 logical_size() const noexcept;

@@ -10,10 +10,18 @@ class Renderer;
 
 /// OS window. Native SDL handles stay in `Native` (engine-private).
 ///
-/// `width()` / `height()` are the live client size in window coordinates and
-/// can change when the user resizes. Drawing, the camera, and mouse positions
-/// use `Renderer::logical_width/height` (the letterboxed `EngineConfig` size),
-/// not these — after a resize they often differ (black bars).
+/// Three sizes, three jobs (SDL high-DPI):
+/// - `width()` / `height()` — live client size in **window coordinates**
+///   (`SDL_GetWindowSize`). Changes on resize.
+/// - `pixel_width()` / `pixel_height()` — drawable framebuffer
+///   (`SDL_GetWindowSizeInPixels`). On a Retina / high-DPI panel this is
+///   often 2× `width`/`height` (`pixel_density()`).
+/// - `Renderer::logical_width/height` — letterboxed `EngineConfig` size.
+///   Drawing, the camera, and `Input` mouse positions use **only** this.
+///
+/// Never pass window or pixel size to `Camera` / `zoom_toward`. Never multiply
+/// mouse coordinates by `pixel_density()` — the engine already maps window
+/// coords → logical present pixels (letterbox + DPI).
 class Window {
 public:
     Window(const Window&) = delete;
@@ -25,6 +33,11 @@ public:
     [[nodiscard]] std::string_view title() const noexcept;
     [[nodiscard]] int width() const noexcept;
     [[nodiscard]] int height() const noexcept;
+    [[nodiscard]] int pixel_width() const noexcept;
+    [[nodiscard]] int pixel_height() const noexcept;
+    /// Framebuffer pixels per window coordinate (`SDL_GetWindowPixelDensity`).
+    /// 1 on a 1× panel; typically 2 on Retina. Not a mouse-scale factor.
+    [[nodiscard]] float pixel_density() const noexcept;
 
 private:
     friend class Engine;

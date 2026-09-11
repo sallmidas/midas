@@ -46,14 +46,23 @@ int parse_smoke_ticks(int argc, char** argv) {
 
 /// Header-only math: camera invertibility, zoom clamps, AABB edges,
 /// Rect::expanded/inset, Transform::then identity/associativity, Color::lerp,
-/// Vec2::length_squared. Runs before SDL so a broken Camera/Rect cannot hide
-/// behind a missing GPU.
+/// Vec2::length_squared, clamp/clamp01. Runs before SDL so a broken
+/// Camera/Rect cannot hide behind a missing GPU.
 void self_check_math() {
     using midas::Camera;
     using midas::Entity;
     using midas::Rect;
     using midas::Transform;
     using midas::Vec2;
+    using midas::clamp;
+    using midas::clamp01;
+
+    if (clamp(0.25f, 0.0f, 1.0f) != 0.25f || clamp(-2.0f, 0.0f, 1.0f) != 0.0f ||
+        clamp(4.0f, 0.0f, 1.0f) != 1.0f || clamp01(1.5f) != 1.0f ||
+        clamp01(std::numeric_limits<float>::quiet_NaN()) != 0.0f ||
+        clamp(3.0f, 5.0f, 1.0f) != 5.0f) {
+        throw std::runtime_error("Midas self-check: clamp/clamp01 failed");
+    }
 
     const Vec2 three_four{3.0f, 4.0f};
     if (std::abs(three_four.length_squared() - 25.0f) > 0.001f ||
@@ -182,6 +191,10 @@ void self_check_math() {
     const Rect too_small = pad.inset(20.0f);
     if (too_small.w > 0.0f || too_small.contains({10.0f, 20.0f})) {
         throw std::runtime_error("Midas self-check: heavy Rect::inset should be empty");
+    }
+    const Rect nan_pad = pad.expanded(std::numeric_limits<float>::quiet_NaN());
+    if (nan_pad.x != pad.x || nan_pad.y != pad.y || nan_pad.w != pad.w || nan_pad.h != pad.h) {
+        throw std::runtime_error("Midas self-check: NaN Rect::expanded should be a no-op");
     }
 
     const Transform parent{{100.0f, 50.0f}, {2.0f, 3.0f}};
@@ -457,9 +470,14 @@ void apply_camera_controls(midas::Engine& engine, midas::Camera& camera) {
     }
 
     if (input.wheel_y() != 0.0f) {
-        constexpr float wheel_step = 1.15f;
-        camera.zoom_toward(input.mouse_position(), std::pow(wheel_step, input.wheel_y()), viewport_w,
-                           viewport_h);
+        const midas::Vec2 mouse = input.mouse_position();
+        const midas::Rect logical_view{0.0f, 0.0f, viewport_w, viewport_h};
+        // Letterbox bars map to logical coords outside the present rect.
+        // Zoom toward those points would pin an off-screen world location.
+        if (logical_view.contains(mouse)) {
+            constexpr float wheel_step = 1.15f;
+            camera.zoom_toward(mouse, std::pow(wheel_step, input.wheel_y()), viewport_w, viewport_h);
+        }
     }
 
     camera.sanitize();
@@ -536,6 +554,13 @@ int main(int argc, char** argv) {
         bool show_hud = smoke_ticks == 0;
         if (show_hud) {
             std::cerr << "Midas: F1 or ` toggles the debug HUD\n";
+            const auto& window = engine.window();
+            const auto& renderer = engine.renderer();
+            std::cerr << "Midas: logical " << renderer.logical_width() << "x"
+                      << renderer.logical_height() << "  window " << window.width() << "x"
+                      << window.height() << "  pixels " << window.pixel_width() << "x"
+                      << window.pixel_height() << "  density " << std::fixed << std::setprecision(2)
+                      << window.pixel_density() << '\n';
         }
 
         const int status = engine.run([&](midas::Engine& engine) {

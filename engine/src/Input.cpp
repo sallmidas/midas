@@ -249,8 +249,9 @@ void Input::handle_native_event(const void* native_event) noexcept {
             break;
         case SDL_EVENT_WINDOW_RESIZED:
         case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
-            // Letterbox mapping window→logical can jump; do not treat that as a
-            // right-drag pan delta.
+        case SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED:
+            // Letterbox / DPI mapping window→logical can jump; do not treat that
+            // as a right-drag pan delta.
             impl_->mouse_initialized = false;
             impl_->mouse_dx = 0.0f;
             impl_->mouse_dy = 0.0f;

@@ -5,6 +5,29 @@
 
 namespace midas {
 
+/// Inclusive clamp. NaN and values below `lo` become `lo`; above `hi` become `hi`.
+/// If `lo` / `hi` are not a finite interval (`lo <= hi`), returns `lo`.
+///
+/// Prefer this over `std::clamp` for gameplay floats: `std::clamp` is undefined
+/// when `lo > hi`, and NaN handling is implementation-defined.
+[[nodiscard]] constexpr float clamp(float value, float lo, float hi) noexcept {
+    if (!(lo <= hi)) {
+        return lo;
+    }
+    if (!(value >= lo)) {
+        return lo;
+    }
+    if (value > hi) {
+        return hi;
+    }
+    return value;
+}
+
+/// `clamp(value, 0, 1)`. NaN / negative → 0.
+[[nodiscard]] constexpr float clamp01(float value) noexcept {
+    return clamp(value, 0.0f, 1.0f);
+}
+
 /// RGBA in 0–1. `gold()` / `bronze()` / `charcoal()` are the Midas sandbox palette.
 struct Color {
     float r{};
@@ -28,11 +51,10 @@ struct Color {
         return {1.0f, 1.0f, 1.0f, 1.0f};
     }
 
-    /// Mix `a` toward `b`. `t` is clamped to `[0, 1]` (NaN / negative → 0).
+    /// Mix `a` toward `b`. `t` is `clamp01`'d (NaN / negative → 0).
     /// Channels are not clamped — feed `gold()` / `white()` style 0–1 colors.
     [[nodiscard]] static constexpr Color lerp(Color a, Color b, float t) noexcept {
-        // NaN and negatives fail `t >= 0`, so they become 0 (safe mix).
-        const float u = !(t >= 0.0f) ? 0.0f : (t > 1.0f ? 1.0f : t);
+        const float u = clamp01(t);
         const float v = 1.0f - u;
         return {a.r * v + b.r * u, a.g * v + b.g * u, a.b * v + b.b * u, a.a * v + b.a * u};
     }
@@ -130,8 +152,12 @@ struct Rect {
 
     /// Grow by `amount` on every edge (negative = shrink). A large inset can
     /// yield a non-positive size — that rect is empty (`overlaps` / `contains`
-    /// fail). `inset(amount)` is `expanded(-amount)`.
+    /// fail). `inset(amount)` is `expanded(-amount)`. A NaN amount is a no-op
+    /// (same idea as `clamp01(NaN)` → 0).
     [[nodiscard]] constexpr Rect expanded(float amount) const noexcept {
+        if (!(amount >= 0.0f) && !(amount <= 0.0f)) {
+            return *this;
+        }
         return {x - amount, y - amount, w + amount * 2.0f, h + amount * 2.0f};
     }
 
