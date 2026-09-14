@@ -825,7 +825,7 @@ int main(int argc, char** argv) {
             // Invalid / stale handles skip — they must not throw or crash.
             renderer.draw_texture(midas::TextureId{}, {10.0f, 10.0f, 8.0f, 8.0f});
             renderer.draw_texture(midas::TextureId{99, 1}, {10.0f, 10.0f, 8.0f, 8.0f},
-                                  {0.0f, 0.0f, 32.0f, 32.0f});
+                                  midas::Rect{0.0f, 0.0f, 32.0f, 32.0f});
         }
 
         const midas::Vec2 viewport = renderer.logical_size();
