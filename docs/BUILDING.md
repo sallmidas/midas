@@ -90,7 +90,7 @@ The sandbox clears to charcoal and draws a small gold/bronze scene: a tiled floo
 
 Textures use **nearest-neighbor** sampling so the BMP stays sharp when zoomed.
 
-Headless / CI smoke (a few 60 Hz ticks, then exit). This path runs a header-only math self-check **before** SDL (clamp, Vec2 including `normalized_or_zero`, Color, Rect AABB / `expanded` / `contains_inclusive`, Camera including Inf zoom → 1, Transform, Entity, Cooldown, CPU `make_checkerboard_rgba`, three-space mouse policy) and fails if the BMP was not copied next to the binary. `--smoke` always loads that BMP, so the checkerboard fallback is exercised only by the CPU self-check (and by an interactive run with a missing file). It does **not** require the debug HUD, does **not** print the interactive logical/window/pixel size line, and does **not** call `SDL_RenderCoordinatesFromWindow` (that converter needs a renderer and stays interactive-only):
+Headless / CI smoke (a few 60 Hz **simulation** ticks, then exit). This path runs a header-only math self-check **before** SDL (clamp, Vec2 including `normalized_or_zero`, Color, Rect AABB / `expanded` / `contains_inclusive`, Camera including Inf zoom → 1, Transform, Entity, Cooldown, CPU `make_checkerboard_rgba`, three-space mouse policy) and fails if the BMP was not copied next to the binary. `--smoke` always loads that BMP, so the checkerboard fallback is exercised only by the CPU self-check (and by an interactive run with a missing file). It does **not** require the debug HUD, does **not** print the interactive logical/window/pixel size line, and does **not** call `SDL_RenderCoordinatesFromWindow` (that converter needs a renderer and stays interactive-only):
 
 ```bash
 SDL_VIDEODRIVER=dummy ./build/debug/bin/midas_sandbox --smoke
@@ -98,7 +98,7 @@ ctest --preset debug
 # equivalent: ctest --test-dir build/debug --output-on-failure
 ```
 
-`MIDAS_SMOKE_FRAMES` is an alternative to `--smoke` (must be a positive integer).
+`MIDAS_SMOKE_FRAMES` is an alternative to `--smoke` (must be a positive integer). It counts **simulation ticks** (`on_update`), not display presents — the name is leftover from the 1:1 loop.
 
 If you run the sandbox **without** `--smoke` and the BMP is missing, it prints every directory it searched and uses a generated checkerboard instead. That fallback is logged; it is not silent.
 

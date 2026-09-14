@@ -16,16 +16,18 @@ struct EngineConfig {
     std::string title{"Midas"};
     int width{1280};
     int height{720};
-    /// 0 = run until quit. Positive = stop after that many 60 Hz ticks (sandbox `--smoke`).
+    /// 0 = run until quit. Positive = stop after that many 60 Hz **simulation**
+    /// ticks (`on_update` calls), not display presents. Sandbox `--smoke` /
+    /// `MIDAS_SMOKE_FRAMES` uses this.
     int max_ticks{0};
 };
 
 /// Owns the four engine modules (`Window`, `Input`, `Time`, `Renderer`) and
-/// the 60 Hz tick loop.
+/// the accumulator frame loop (fixed 60 Hz simulation, display presents separately).
 ///
 /// Copies/moves are deleted because the SDL video subsystem and native window are
-/// unique. Pass a tick callback to `run()`; call `request_quit()` (or press Esc
-/// in the sandbox) to stop.
+/// unique. Pass update + present callbacks to `run()`; call `request_quit()`
+/// (or press Esc in the sandbox) to stop.
 ///
 /// **Shutdown** (C++ destroys members in reverse declaration order):
 /// `Renderer` then `Window` then `SDL_Quit`. Destroy game `Texture`s before
@@ -63,10 +65,21 @@ public:
     void request_quit() noexcept;
     [[nodiscard]] bool is_running() const noexcept;
 
-    /// 60 Hz loop: pump events, `on_tick`, sleep the remainder of 1/60 s.
-    /// Stops on `request_quit`, close box, or `EngineConfig::max_ticks`.
-    /// Returns 0 on a normal exit (throws if a tick or SDL call fails).
-    int run(std::function<void(Engine&)> on_tick);
+    /// Max simulation ticks per display frame. A hitch longer than this many
+    /// ticks is clamped before it enters the accumulator (no death spiral).
+    /// The sub-tick remainder stays in the accumulator for the next frame.
+    static constexpr int max_catch_up = 4;
+
+    /// Accumulator loop: pump OS events once per display frame, run 0..`max_catch_up`
+    /// simulation ticks (`on_update`, each with `Time::delta_seconds() == 1/60`),
+    /// then `on_present` once. Sleeps the leftover of the 1/60 s display budget
+    /// when ahead of 60 Hz (dummy video has no vsync). Stops on `request_quit`,
+    /// close box, or `EngineConfig::max_ticks` (simulation ticks).
+    ///
+    /// Construction of `Engine` / textures may throw. Callbacks must not: an
+    /// in-tick load failure should skip or return an error, not unwind `run()`.
+    /// Returns 0 on a normal exit (an SDL pump/present failure still throws).
+    int run(std::function<void(Engine&)> on_update, std::function<void(Engine&)> on_present);
 
 private:
     void pump_events();

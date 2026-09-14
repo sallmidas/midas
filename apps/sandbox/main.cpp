@@ -23,6 +23,8 @@ namespace {
 constexpr float kViewportW = 1280.0f;
 constexpr float kViewportH = 720.0f;
 
+/// `--smoke` / `MIDAS_SMOKE_FRAMES` count **simulation ticks** (`on_update`),
+/// not display presents. A hitch may present once after several ticks.
 int parse_smoke_ticks(int argc, char** argv) {
     for (int i = 1; i < argc; ++i) {
         const std::string_view arg{argv[i]};
@@ -62,6 +64,8 @@ void self_check_math() {
     using midas::clamp;
     using midas::clamp01;
 
+    static_assert(midas::Time::tick_hz == 60);
+    static_assert(midas::Engine::max_catch_up == 4);
     static_assert(clamp(0.25f, 0.0f, 1.0f) == 0.25f);
     static_assert(clamp(-2.0f, 0.0f, 1.0f) == 0.0f);
     static_assert(clamp(4.0f, 0.0f, 1.0f) == 1.0f);
@@ -812,41 +816,44 @@ int main(int argc, char** argv) {
                       << window.pixel_density() << '\n';
         }
 
-        const int status = engine.run([&](midas::Engine& engine) {
-            // Quit before camera/HUD work so the last tick does not present a
-            // half-updated frame (close-box already skips on_tick entirely).
-            if (engine.input().key_pressed(midas::Key::Escape)) {
-                engine.request_quit();
-                return;
-            }
-            // Smoke never enables the overlay (dummy video, no debug text).
-            if (smoke_ticks == 0 && (engine.input().key_pressed(midas::Key::F1) ||
-                                     engine.input().key_pressed(midas::Key::Grave))) {
-                show_hud = !show_hud;
-            }
+        const int status = engine.run(
+            [&](midas::Engine& engine) {
+                // Quit before camera/HUD work so the last tick does not present a
+                // half-updated frame (close-box already skips update/present).
+                if (engine.input().key_pressed(midas::Key::Escape)) {
+                    engine.request_quit();
+                    return;
+                }
+                // Smoke never enables the overlay (dummy video, no debug text).
+                if (smoke_ticks == 0 && (engine.input().key_pressed(midas::Key::F1) ||
+                                         engine.input().key_pressed(midas::Key::Grave))) {
+                    show_hud = !show_hud;
+                }
 
-            apply_camera_controls(engine, camera);
-            engine.renderer().set_camera(camera);
+                apply_camera_controls(engine, camera);
 
-            // Teaching Color::lerp: the solid plinth eases gold ↔ bronze.
-            const float pulse =
-                0.5f + 0.5f * std::sin(static_cast<float>(engine.time().elapsed_seconds()) * 1.2f);
-            scene.entities[scene.plinth_index].color =
-                midas::Color::lerp(midas::Color::gold(), midas::Color::bronze(), pulse);
-
-            auto& renderer = engine.renderer();
-            renderer.clear(midas::Color::charcoal());
-            for (const auto& entity : scene.entities) {
-                midas::draw_entity(renderer, entity);
-            }
-            if (show_hud) {
-                draw_debug_overlay(engine, camera);
-            }
-            renderer.present();
-        });
+                // Teaching Color::lerp: the solid plinth eases gold ↔ bronze.
+                const float pulse =
+                    0.5f + 0.5f * std::sin(static_cast<float>(engine.time().elapsed_seconds()) * 1.2f);
+                scene.entities[scene.plinth_index].color =
+                    midas::Color::lerp(midas::Color::gold(), midas::Color::bronze(), pulse);
+            },
+            [&](midas::Engine& engine) {
+                engine.renderer().set_camera(camera);
+                auto& renderer = engine.renderer();
+                renderer.clear(midas::Color::charcoal());
+                for (const auto& entity : scene.entities) {
+                    midas::draw_entity(renderer, entity);
+                }
+                if (show_hud) {
+                    draw_debug_overlay(engine, camera);
+                }
+                renderer.present();
+            });
 
         if (smoke_ticks > 0) {
-            std::cerr << "Midas: smoke completed " << smoke_ticks << " ticks (" << scene.entities.size()
+            std::cerr << "Midas: smoke completed " << smoke_ticks << " simulation ticks ("
+                      << scene.entities.size()
                       << " entities, atlas " << atlas.width() << "x" << atlas.height()
                       << " 2 cells, math self-check ok)\n";
         }
