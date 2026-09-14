@@ -140,6 +140,11 @@ void Renderer::fill_rect(const Rect& rect, const Color& color) {
 }
 
 void Renderer::draw_texture(const Texture& texture, const Rect& dest, const Color& tint) {
+    draw_texture(texture, dest, Rect{}, tint);
+}
+
+void Renderer::draw_texture(const Texture& texture, const Rect& dest, const Rect& src,
+                            const Color& tint) {
     auto* native_texture = static_cast<SDL_Texture*>(texture.native_texture());
     if (native_texture == nullptr) {
         throw std::runtime_error("Midas draw_texture requires a valid texture");
@@ -147,6 +152,18 @@ void Renderer::draw_texture(const Texture& texture, const Rect& dest, const Colo
 
     const Rect screen = project_world(dest);
     if (!is_drawable_rect(screen)) {
+        return;
+    }
+
+    const SDL_FRect* native_src = nullptr;
+    SDL_FRect src_storage{};
+    if (is_drawable_rect(src)) {
+        src_storage = SDL_FRect{src.x, src.y, src.w, src.h};
+        native_src = &src_storage;
+    } else if (src.x == 0.0f && src.y == 0.0f && src.w == 0.0f && src.h == 0.0f) {
+        // Default `{}` / the three-argument overload: sample the whole texture.
+    } else {
+        // Any other non-drawable source (NaN, non-positive size) is skipped.
         return;
     }
 
@@ -162,7 +179,7 @@ void Renderer::draw_texture(const Texture& texture, const Rect& dest, const Colo
 
     const SDL_FRect native_rect{screen.x, screen.y, screen.w, screen.h};
     const bool drawn =
-        SDL_RenderTexture(impl_->native.renderer, native_texture, nullptr, &native_rect);
+        SDL_RenderTexture(impl_->native.renderer, native_texture, native_src, &native_rect);
 
     // Restore identity so a later draw of this texture cannot inherit the tint
     // (including the throw path below).

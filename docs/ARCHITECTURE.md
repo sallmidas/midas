@@ -42,7 +42,8 @@ Time       Fixed timestep: `Time::tick_hz == 60`, `delta_seconds() == 1/60`
            time including the 60 Hz sleep — HUD, not gameplay.
            `Cooldown` counts remaining seconds until `ready()` (tick with
            `delta_seconds()`, not `frame_seconds()`).
-Renderer   Clear, fill rect, textured quad, present. Applies an orthographic camera.
+Renderer   Clear, fill rect, textured quad (optional texture-space source rect
+           for atlas cells), present. Applies an orthographic camera.
            `logical_width` / `logical_height` are the letterboxed present size
            (`EngineConfig`, stable across OS resizes). `logical_size()` is the
            same pair as a `Vec2` for camera math.
@@ -55,7 +56,8 @@ Texture    GPU image from RGBA8 pixels (`create_texture`) or a BMP (`load_bmp`).
 Camera     2D ortho view: `position` is the world point at the viewport center.
            Uniform zoom, aspect-correct visible rect, clamped to [0.25, 8].
 Entity     Lightweight transform + size + optional texture. Not an ECS.
-           `Transform::then` composes a child without parent pointers.
+           `source` is an optional atlas cell in texture pixels (empty = whole
+           texture). `Transform::then` composes a child without parent pointers.
 ```
 
 `Types.hpp` defines `Color`, `Vec2`, `Rect`, and NaN-safe `clamp` / `clamp01`. `Color::lerp` mixes two 0–1 colors (`t` is `clamp01`'d). `Vec2::length_squared` is `x*x+y*y` for comparisons without `hypot` (`length()`). `Vec2::normalized_or_zero` is the unit vector, or `{0,0}` if the length is zero / non-finite. `Rect::overlaps` / `Rect::contains` are half-open 2D AABB helpers (shared edges do not overlap). `Rect::contains_inclusive` is the closed test (`[x, x+w] × [y, y+h]`) used for letterbox present bounds. `Rect::expanded` / `Rect::inset` grow or shrink every edge (a large inset can become an empty rect; a NaN amount is a no-op). `Cooldown` (in `Time.hpp`) is remaining-seconds until `ready()`; tick it with `delta_seconds()`. Non-finite `remaining` is expired. `midas.hpp` is the umbrella include (`Cooldown`, `clamp`, `contains_inclusive`, `make_checkerboard_rgba`, and the rest of the public API).
@@ -85,6 +87,15 @@ engine.run([&](midas::Engine& e) {
     e.renderer().present();
 });
 ```
+
+A sprite-sheet cell is the same textured quad with a source rect in texture pixels. One `Texture` upload, many cells — no re-upload per draw:
+
+```cpp
+e.renderer().draw_texture(atlas, dest, midas::Rect{0.0f, 0.0f, 32.0f, 32.0f});
+e.renderer().draw_texture(atlas, dest2, midas::Rect{32.0f, 0.0f, 32.0f, 32.0f});
+```
+
+`Entity::source` is the same rectangle; leave it empty to sample the whole texture. `draw_entity` forwards a positive source to that overload.
 
 `EngineConfig::max_ticks` stops the loop after N ticks (used by `--smoke` / `MIDAS_SMOKE_FRAMES`). Closing the window sets `Input::quit_requested()` and ends the loop.
 
@@ -143,7 +154,7 @@ Never pass window or pixel size to `Camera` / `zoom_toward`. Never multiply mous
 
 Visible world size is `(logical_w / zoom)` by `(logical_h / zoom)`, so the view aspect matches the logical present size (aspect-correct ortho). Circles stay circles; letterboxing handles a window whose pixel aspect differs.
 
-The renderer starts with `zoom == 1` and `position` at the viewport center, so world units match logical present pixels until the game moves the camera. A default `Camera{}` is zoom 1 at world origin — copy `Renderer::camera()` for that identity view. `fill_rect` and `draw_texture` take world rectangles; `Camera::project` maps them to the screen. `Camera::zoom_toward` scales around a **logical** screen point (`Input::mouse_position()`, not window or framebuffer pixels) and ignores non-finite or non-positive multipliers. Projection uses `clamped_zoom()` so a zero/NaN zoom cannot divide by zero.
+The renderer starts with `zoom == 1` and `position` at the viewport center, so world units match logical present pixels until the game moves the camera. A default `Camera{}` is zoom 1 at world origin — copy `Renderer::camera()` for that identity view. `fill_rect` and `draw_texture` take world dest rectangles; `Camera::project` maps them to the screen. `draw_texture` may also take a **source** `Rect` in texture pixel space (sprite-sheet cell) — one GPU upload, many cells. Omit `src` (the three-argument overload, or `Entity::source` left empty) to sample the whole texture. A non-finite or non-positive source is skipped, same as dest. `Camera::zoom_toward` scales around a **logical** screen point (`Input::mouse_position()`, not window or framebuffer pixels) and ignores non-finite or non-positive multipliers. Projection uses `clamped_zoom()` so a zero/NaN zoom cannot divide by zero.
 
 The sandbox pans with WASD / arrows (or right-mouse drag) at constant **screen-space** speed (`pan / zoom`) and zooms with Q/E or the wheel (wheel zoom is skipped while the cursor is **outside** the closed logical present rect — letterbox bars, not the far edge of the view). **Space** resets to the identity view for the current logical viewport (center, zoom 1) and sanitizes pan/zoom so a NaN cannot stick; the same tick does not also apply WASD/wheel/drag. **Esc** requests quit and returns before `present`. Held WASD and the right mouse button are released if the window loses focus, so the camera cannot keep sliding while you are in another app. Coming back into focus re-reads the OS keyboard and mouse buttons, so a still-held W resumes pan without needing a new key-down — and without synthesizing a `key_pressed` edge (Escape would quit, F1 would toggle the HUD). Key/button events while unfocused are ignored. Mouse-wheel and right-drag deltas are clamped so a cursor warp or a wild trackpad burst cannot jump the view. A HUD in the top-left shows the fixed `dt`, wall-clock FPS, camera, and a one-line control legend (toggle with F1 or backtick).
 
@@ -156,15 +167,17 @@ Two upload paths, both SDL-private:
 
 Both paths throw on bad input (empty path, missing file, undersized pixel buffer, invalid size). `load_bmp` puts the path in the exception; it does not return a dummy texture. `make_checkerboard_rgba` `clamp01`s finite channels; non-finite RGB becomes 0 and non-finite alpha becomes 1 (the same fallback as renderer color mods).
 
+`Renderer::draw_texture(texture, dest, src, tint)` samples `src` in texture pixels (top-left origin). The sandbox uploads a 64×32 two-cell sheet once (`make_checkerboard_rgba` with `cell_size == 32`) and draws the gold cell and the bronze cell side by side — same `Texture`, two source rects, no re-upload. The three-argument `draw_texture` (and an `Entity` with default `source`) still draws the whole image.
+
 Textures use nearest-neighbor sampling (`SDL_SCALEMODE_NEAREST`) so pixel art stays sharp when the camera zooms. Linear filtering is intentionally not exposed yet.
 
-The sandbox locates `assets/midas_sprite.bmp` via `Engine::executable_directory()`, `argv[0]`, `./assets`, and the source tree `apps/sandbox/assets`. `--smoke` only accepts a BMP next to the binary (the CMake copy / install rule) and fails if that file is missing. An interactive run logs the search and falls back to a generated checkerboard.
+The sandbox locates `assets/midas_sprite.bmp` via `Engine::executable_directory()`, `argv[0]`, `./assets`, and the source tree `apps/sandbox/assets`. `--smoke` only accepts a BMP next to the binary (the CMake copy / install rule) and fails if that file is missing. An interactive run logs the search and falls back to a generated checkerboard. Separately, the sandbox generates a 64×32 two-cell atlas once (`create_texture`) and draws both cells with source rects.
 
 ## Entities and AABB
 
 `Transform` is position + scale (no rotation). `parent.then(local)` composes a child in the parent's space — a scene-graph starter without storing parent pointers that can dangle.
 
-`Entity` is a drawable bag of data: transform, unscaled size, color (fill or texture tint), and an optional **non-owning** `const Texture*`. Keep entities in an array; draw with `draw_entity` (skips a non-finite or non-positive dest).
+`Entity` is a drawable bag of data: transform, unscaled size, color (fill or texture tint), an optional **non-owning** `const Texture*`, and an optional texture-space `source` rect (atlas cell; empty / non-positive size means the whole texture). Keep entities in an array; draw with `draw_entity` (skips a non-finite or non-positive dest).
 
 `Rect` is the 2D AABB (`x, y, w, h` with top-left origin). `contains` is half-open (`[x, x+w) × [y, y+h)`). `overlaps` uses the same edges, so rectangles that only share a boundary do not overlap, and a zero-size rect is empty. `contains_inclusive` is closed (`[x, x+w] × [y, y+h]`) for letterbox present bounds. `expanded(amount)` / `inset(amount)` grow or shrink every edge; a large inset can yield a non-positive size (empty). `Entity::overlaps` is the collision starter. Width/height should stay non-negative.
 

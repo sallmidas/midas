@@ -14,6 +14,8 @@ class Renderer;
 ///
 /// Sampling is nearest-neighbor (`SDL_SCALEMODE_NEAREST`) so pixel-art sprites
 /// stay sharp when the camera zooms. Linear filtering is a later, opt-in layer.
+/// Draw one cell of a sheet with `Renderer::draw_texture(..., src)` — `src` is
+/// in texture pixels; the GPU image is not re-uploaded per cell.
 ///
 /// **Lifetime:** destroy the texture before the `Renderer` that created it
 /// (declare `Engine` first, then the `Texture`, so the texture dies first).
