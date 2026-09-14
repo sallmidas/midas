@@ -18,7 +18,7 @@ struct EngineConfig {
     int height{720};
     /// 0 = run until quit. Positive = stop after that many 60 Hz **simulation**
     /// ticks (`on_update` calls), not display presents. Sandbox `--smoke` /
-    /// `MIDAS_SMOKE_FRAMES` uses this.
+    /// `MIDAS_SMOKE_FRAMES` uses this. Room `--smoke` does too.
     int max_ticks{0};
 };
 

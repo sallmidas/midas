@@ -2,6 +2,13 @@
 
 Bullet highlights from the 2D engine fine-tunes on `main`. No 3D / ECS / editor.
 
+## Unreleased (AABB + room v0)
+
+- Public AABB helpers: `aabb_overlap(Rect, Rect)` (same half-open test as `Rect::overlaps`) and `aabb_move` (X then Y, slide along solids). Header-only in `Types.hpp`; `Entity::overlaps` uses `aabb_overlap`.
+- `Key::R` for restart. `apps/room` (`midas_room`) is the v0 game: one room, WASD, walls, key pickup, locked then open door, win overlay, R to reset. Fixed identity camera. Player/key/door are `TextureId` atlas cells; walls are fills.
+- Room `--smoke` runs AABB + a scripted key→door self-check, then dummy-video ticks. `ctest` runs sandbox smoke and room smoke.
+- Docs: README / BUILDING / ARCHITECTURE plus [GAME_V0.md](docs/GAME_V0.md). Sandbox stays the tech gym.
+
 ## Unreleased (TextureId)
 
 - `TextureId` is an opaque index+generation handle. `Renderer` owns GPU textures in a slot vector; `create_texture` / `load_bmp` return `TextureId`.

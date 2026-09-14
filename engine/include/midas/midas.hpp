@@ -4,7 +4,7 @@
 /// (`Cooldown`), Renderer (`draw_texture` dest + optional atlas source rect),
 /// Texture (`TextureId`, `make_checkerboard_rgba`), Camera, Entity (`Transform`,
 /// `draw_entity`, optional `source` cell), and Types (`Color`, `Vec2`, `Rect`,
-/// `clamp` / `clamp01`).
+/// `aabb_overlap` / `aabb_move`, `clamp` / `clamp01`).
 
 #include <midas/Camera.hpp>
 #include <midas/Engine.hpp>

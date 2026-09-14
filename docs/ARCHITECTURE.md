@@ -1,15 +1,16 @@
 # Midas architecture
 
-Midas is split into a static engine library and a sandbox application. SDL3 is an implementation detail of the engine; public headers under `engine/include/midas/` do not include SDL.
+Midas is split into a static engine library, a sandbox tech gym, and a v0 room game. SDL3 is an implementation detail of the engine; public headers under `engine/include/midas/` do not include SDL.
 
 ## Targets
 
 | Target | Path | Role |
 | --- | --- | --- |
 | `midas` | `engine/` | Core library (`midas::midas`) |
-| `midas_sandbox` | `apps/sandbox/` | Windowed demo that exercises the public API |
+| `midas_sandbox` | `apps/sandbox/` | Tech gym: camera, sprites, atlas, HUD |
+| `midas_room` | `apps/room/` | v0 game: one room, WASD, key, door |
 
-`ctest` in the build tree runs `midas_sandbox --smoke` with `SDL_VIDEODRIVER=dummy`.
+`ctest` in the build tree runs `midas_sandbox --smoke` and `midas_room --smoke` with `SDL_VIDEODRIVER=dummy`. Game v0 scope is in [GAME_V0.md](GAME_V0.md).
 
 ## Public API
 
@@ -63,9 +64,12 @@ Camera     2D ortho view: `position` is the world point at the viewport center.
 Entity     Lightweight transform + size + optional `TextureId`. Not an ECS.
            `source` is an optional atlas cell in texture pixels (empty = whole
            texture). `Transform::then` composes a child without parent pointers.
+AABB       `aabb_overlap(Rect, Rect)` is half-open overlap (same as
+           `Rect::overlaps`). `aabb_move` slides a body along solids (X then Y).
+           The room game uses both for walls / key / door.
 ```
 
-`Types.hpp` defines `Color`, `Vec2`, `Rect`, and NaN-safe `clamp` / `clamp01`. `Color::lerp` mixes two 0–1 colors (`t` is `clamp01`'d). `Vec2::length_squared` is `x*x+y*y` for comparisons without `hypot` (`length()`). `Vec2::normalized_or_zero` is the unit vector, or `{0,0}` if the length is zero / non-finite. `Rect::overlaps` / `Rect::contains` are half-open 2D AABB helpers (shared edges do not overlap). `Rect::contains_inclusive` is the closed test (`[x, x+w] × [y, y+h]`) used for letterbox present bounds. `Rect::expanded` / `Rect::inset` grow or shrink every edge (a large inset can become an empty rect; a NaN amount is a no-op). `Cooldown` (in `Time.hpp`) is remaining-seconds until `ready()`; tick it with `delta_seconds()`. Non-finite `remaining` is expired. `midas.hpp` is the umbrella include (`Cooldown`, `clamp`, `contains_inclusive`, `TextureId`, `make_checkerboard_rgba`, and the rest of the public API).
+`Types.hpp` defines `Color`, `Vec2`, `Rect`, NaN-safe `clamp` / `clamp01`, and the AABB helpers `aabb_overlap` / `aabb_move`. `Color::lerp` mixes two 0–1 colors (`t` is `clamp01`'d). `Vec2::length_squared` is `x*x+y*y` for comparisons without `hypot` (`length()`). `Vec2::normalized_or_zero` is the unit vector, or `{0,0}` if the length is zero / non-finite. `Rect::overlaps` / `Rect::contains` are half-open 2D AABB helpers (shared edges do not overlap). `aabb_overlap(a, b)` is the same test as `a.overlaps(b)`. `aabb_move(body, delta, solids)` applies X then Y and rejects an axis that would overlap a solid (slide along walls). `Rect::contains_inclusive` is the closed test (`[x, x+w] × [y, y+h]`) used for letterbox present bounds. `Rect::expanded` / `Rect::inset` grow or shrink every edge (a large inset can become an empty rect; a NaN amount is a no-op). `Cooldown` (in `Time.hpp`) is remaining-seconds until `ready()`; tick it with `delta_seconds()`. Non-finite `remaining` is expired. `midas.hpp` is the umbrella include (`Cooldown`, `clamp`, `aabb_overlap`, `aabb_move`, `contains_inclusive`, `TextureId`, `make_checkerboard_rgba`, and the rest of the public API).
 
 Games talk only to `Engine` and the types it returns:
 
@@ -202,7 +206,9 @@ The sandbox locates `assets/midas_sprite.bmp` via `Engine::executable_directory(
 
 `Entity` is a drawable bag of data: transform, unscaled size, color (fill or texture tint), an optional `TextureId` (default invalid = solid fill), and an optional texture-space `source` rect (atlas cell; empty / non-positive size means the whole texture). Keep entities in an array; draw with `draw_entity` (skips a non-finite or non-positive dest). A minted-looking but stale handle is skipped by `draw_texture`, not turned into a fill.
 
-`Rect` is the 2D AABB (`x, y, w, h` with top-left origin). `contains` is half-open (`[x, x+w) × [y, y+h)`). `overlaps` uses the same edges, so rectangles that only share a boundary do not overlap, and a zero-size rect is empty. `contains_inclusive` is closed (`[x, x+w] × [y, y+h]`) for letterbox present bounds. `expanded(amount)` / `inset(amount)` grow or shrink every edge; a large inset can yield a non-positive size (empty). `Entity::overlaps` is the collision starter. Width/height should stay non-negative.
+`Rect` is the 2D AABB (`x, y, w, h` with top-left origin). `contains` is half-open (`[x, x+w) × [y, y+h)`). `overlaps` / `aabb_overlap` use the same edges, so rectangles that only share a boundary do not overlap, and a zero-size rect is empty. `aabb_move` tries X then Y against a span of solids so a body can slide along a wall. `contains_inclusive` is closed (`[x, x+w] × [y, y+h]`) for letterbox present bounds. `expanded(amount)` / `inset(amount)` grow or shrink every edge; a large inset can yield a non-positive size (empty). `Entity::overlaps` calls `aabb_overlap` on the two bounds. Width/height should stay non-negative.
+
+The v0 room app (`midas_room`) is the first game on this API: walls are solids, the locked door is a solid, key pickup is overlap, and overlapping the open door wins. See [GAME_V0.md](GAME_V0.md).
 
 `Color::lerp(a, b, t)` is the 0–1 mix used by the sandbox plinth (gold toward bronze). `t` is `clamp01`'d (NaN / negative → 0; Inf / above 1 → 1). `clamp` / `clamp01` are the NaN-safe float helpers (`std::clamp` is undefined when `lo > hi`). `Vec2::normalized_or_zero` is the unit vector used for WASD pan (zero / NaN / Inf → `{0,0}`). `Cooldown` is remaining-seconds until `ready()`; tick it with the fixed `delta_seconds()` step. Non-finite `remaining` is expired (`ready()`, and `tick` snaps it to 0).
 

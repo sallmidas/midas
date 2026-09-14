@@ -12,6 +12,7 @@
 #include <optional>
 #include <sstream>
 #include <stdexcept>
+#include <span>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -48,7 +49,8 @@ int parse_smoke_ticks(int argc, char** argv) {
 }
 
 /// Header-only math, before SDL so a broken Camera/Rect cannot hide behind a
-/// missing GPU. Covers the constexpr/NaN contracts on clamp, Vec2, Color, Rect,
+/// missing GPU. Covers the constexpr/NaN contracts on clamp, Vec2, Color, Rect
+/// (including `aabb_overlap` / `aabb_move`),
 /// Camera, Transform, Entity (including empty `source` = whole texture and
 /// default `TextureId{}` = solid fill), Cooldown,
 /// CPU `make_checkerboard_rgba` (including a 2-cell atlas sheet), and the
@@ -210,8 +212,23 @@ void self_check_math() {
     const Rect a{0.0f, 0.0f, 10.0f, 10.0f};
     const Rect b{5.0f, 5.0f, 10.0f, 10.0f};
     const Rect c{20.0f, 20.0f, 4.0f, 4.0f};
-    if (!a.overlaps(b) || b.overlaps(c) || !a.contains({1.0f, 1.0f}) || a.contains({10.0f, 10.0f})) {
+    if (!a.overlaps(b) || b.overlaps(c) || !a.contains({1.0f, 1.0f}) || a.contains({10.0f, 10.0f}) ||
+        !midas::aabb_overlap(a, b) || midas::aabb_overlap(a, c) ||
+        midas::aabb_overlap(a, b) != a.overlaps(b)) {
         throw std::runtime_error("Midas self-check: AABB overlaps/contains failed");
+    }
+
+    {
+        const Rect wall{20.0f, 0.0f, 10.0f, 10.0f};
+        const Rect moved = midas::aabb_move(a, {4.0f, 0.0f}, {});
+        const Rect blocked = midas::aabb_move(a, {15.0f, 2.0f}, std::span<const Rect>(&wall, 1));
+        const Rect neighbor{10.0f, 0.0f, 10.0f, 10.0f};
+        const Rect slide = midas::aabb_move(a, {8.0f, 3.0f}, std::span<const Rect>(&neighbor, 1));
+        if (std::abs(moved.x - 4.0f) > 0.001f || std::abs(blocked.x - a.x) > 0.001f ||
+            std::abs(blocked.y - 2.0f) > 0.001f || std::abs(slide.x - a.x) > 0.001f ||
+            std::abs(slide.y - 3.0f) > 0.001f) {
+            throw std::runtime_error("Midas self-check: aabb_move slide / reject failed");
+        }
     }
 
     // Half-open AABB: share an edge or a corner → no overlap. Zero-size is empty.

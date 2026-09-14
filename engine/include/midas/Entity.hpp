@@ -49,8 +49,8 @@ struct Transform {
 /// size (the default) draws the whole texture; a positive `w`/`h` is forwarded
 /// to `Renderer::draw_texture` as the source rect.
 ///
-/// TODO: 2D velocity / overlap resolution can wait; AABB `overlaps` is the
-/// collision starter.
+/// Collision is AABB: `overlaps` / `aabb_overlap`, with `aabb_move` to slide
+/// along walls. Rotation is still out of scope.
 struct Entity {
     Transform transform;
     Vec2 size{};
@@ -63,7 +63,7 @@ struct Entity {
     }
 
     [[nodiscard]] constexpr bool overlaps(const Entity& other) const noexcept {
-        return bounds().overlaps(other.bounds());
+        return aabb_overlap(bounds(), other.bounds());
     }
 };
 
