@@ -15,8 +15,10 @@ Midas is split into a static engine library and a sandbox application. SDL3 is a
 
 ```
 Engine     Owns the SDL video subsystem and the subsystems below.
-           Runs a capped 60 Hz tick loop and pumps OS events.
-           `executable_directory()` is SDL_GetBasePath (asset lookup).
+           Runs an accumulator frame loop: fixed 60 Hz simulation
+           (`on_update`, up to `Engine::max_catch_up` ticks per display
+           frame) then one `on_present`. `executable_directory()` is
+           SDL_GetBasePath (asset lookup).
 Window     OS window (size, title). Native SDL handles stay private.
            `width` / `height` are live **window coordinates** (resizable).
            `pixel_width` / `pixel_height` are the drawable; `pixel_density()`
@@ -36,10 +38,12 @@ Input      Keyboard + mouse (down / pressed this tick), wheel, quit (close box).
            Unfocused key/button events are ignored. A resize or display-scale
            change zeros mouse_delta so letterbox remapping cannot jump a
            right-drag pan.
-Time       Fixed timestep: `Time::tick_hz == 60`, `delta_seconds() == 1/60`
-           (use this for motion). `elapsed_seconds()` is wall-clock.
-           `frame_seconds()` / `frames_per_second()` are the last tick's wall
-           time including the 60 Hz sleep — HUD, not gameplay.
+Time       Fixed simulation timestep: `Time::tick_hz == 60`,
+           `delta_seconds() == 1/60` (use this for motion, once per
+           `on_update`). `elapsed_seconds()` is wall-clock.
+           `frame_seconds()` / `frames_per_second()` are the last
+           **display frame**'s wall time including the 60 Hz pace sleep —
+           HUD, not gameplay.
            `Cooldown` counts remaining seconds until `ready()` (tick with
            `delta_seconds()`, not `frame_seconds()`).
 Renderer   Clear, fill rect, textured quad (optional texture-space source rect
@@ -76,16 +80,20 @@ tile.texture = &sprite;
 
 midas::Camera camera = engine.renderer().camera();
 
-engine.run([&](midas::Engine& e) {
-    if (e.input().key_pressed(midas::Key::Escape)) {
-        e.request_quit();
-        return;
-    }
-    e.renderer().set_camera(camera);
-    e.renderer().clear(midas::Color::charcoal());
-    midas::draw_entity(e.renderer(), tile);
-    e.renderer().present();
-});
+engine.run(
+    [&](midas::Engine& e) {
+        if (e.input().key_pressed(midas::Key::Escape)) {
+            e.request_quit();
+            return;
+        }
+        camera.position.x += 40.0f * static_cast<float>(e.time().delta_seconds());
+    },
+    [&](midas::Engine& e) {
+        e.renderer().set_camera(camera);
+        e.renderer().clear(midas::Color::charcoal());
+        midas::draw_entity(e.renderer(), tile);
+        e.renderer().present();
+    });
 ```
 
 A sprite-sheet cell is the same textured quad with a source rect in texture pixels. One `Texture` upload, many cells — no re-upload per draw:
@@ -97,7 +105,13 @@ e.renderer().draw_texture(atlas, dest2, midas::Rect{32.0f, 0.0f, 32.0f, 32.0f});
 
 `Entity::source` is the same rectangle; leave it empty to sample the whole texture. `draw_entity` forwards a positive source to that overload.
 
-`EngineConfig::max_ticks` stops the loop after N ticks (used by `--smoke` / `MIDAS_SMOKE_FRAMES`). Closing the window sets `Input::quit_requested()` and ends the loop.
+`EngineConfig::max_ticks` stops the loop after N **simulation** ticks (`on_update`), used by `--smoke` / `MIDAS_SMOKE_FRAMES`. The env var name is historical: it counts sim ticks, not display presents. Closing the window sets `Input::quit_requested()` and ends the loop.
+
+## Locked policies
+
+- **Construction may throw.** `Engine`, `Window`, `Renderer`, `create_texture`, and `load_bmp` fail by exception. That is the setup path.
+- **In-tick load failures must not unwind the loop.** `on_update` / `on_present` must not throw. If a game loads an asset during a tick, skip the draw or return an error; do not throw through `Engine::run()`. (The sandbox loads the BMP and atlas **before** `run()`.)
+- **`SDL_Renderer` is the host** until a real game demands otherwise. No custom GPU backend, no `SDL_GPU`, no raw OpenGL in this tree.
 
 ## Shutdown
 
@@ -114,18 +128,25 @@ Destroy a `Texture` before the `Renderer` / `Engine` that created it. `Texture` 
 
 ## Frame loop
 
-Each tick:
+Simulation is fixed at 60 Hz (`Time::tick_hz`). Display presents are decoupled: one present per display frame after 0..`Engine::max_catch_up` (4) simulation ticks.
 
-1. Snapshot previous keyboard and mouse-button state (`key_pressed` / `mouse_pressed` are edges). Reset wheel delta.
-2. Pump SDL events into `Input`. Resize, pixel-size, and display-scale changes re-apply letterbox presentation and zero mouse delta. Mouse *event* coordinates are converted to logical space; sampled mouse position is applied in step 3.
-3. Sample `SDL_GetMouseState` (**window coordinates**, not framebuffer pixels) and convert through `SDL_RenderCoordinatesFromWindow` (pixel density + letterbox → logical). A failed conversion keeps the last logical sample — it does not fall back to window or pixel coords, which would break `Camera::zoom_toward` on a high-DPI or letterboxed window.
-4. Stop if quit was requested.
-5. Invoke the tick callback (update + render).
-6. Advance `Time::tick_index()`.
-7. Sleep the remainder of `1/60` s so the loop holds 60 Hz even without vsync (for example `SDL_VIDEODRIVER=dummy`).
-8. Record that tick's wall time on `Time` (`frame_seconds` / `frames_per_second`), including the sleep — or the overrun if the tick ran long.
+Each **display frame**:
 
-Gameplay must use `delta_seconds()` (fixed `1/60`), not `frame_seconds()`. A hitch then does not fling the camera; the HUD can still show the dip in FPS.
+1. Measure wall time since the previous frame. Clamp that elapsed time to at most `max_catch_up` ticks (a debugger pause cannot queue unbounded catch-up). Add it to an accumulator on `Engine` (not on `Time`).
+2. Snapshot previous keyboard and mouse-button state (`key_pressed` / `mouse_pressed` are edges). Reset wheel delta.
+3. Pump SDL events into `Input`. Resize, pixel-size, and display-scale changes re-apply letterbox presentation and zero mouse delta. Mouse *event* coordinates are converted to logical space; sampled mouse position is applied in step 4.
+4. Sample `SDL_GetMouseState` (**window coordinates**, not framebuffer pixels) and convert through `SDL_RenderCoordinatesFromWindow` (pixel density + letterbox → logical). A failed conversion keeps the last logical sample — it does not fall back to window or pixel coords, which would break `Camera::zoom_toward` on a high-DPI or letterboxed window.
+5. Stop if quit was requested (close box). No `on_update` / `on_present` this frame.
+6. While the accumulator holds at least `1/60` s and fewer than `max_catch_up` ticks have run this frame:
+   - Extra catch-up ticks call `Input::begin_frame` again **without** re-pumping OS events, so `key_pressed`, wheel, and `mouse_delta` fire once per display frame. Held keys (`key_down`) still apply on every simulation tick (WASD pan stays at 60 Hz).
+   - Invoke `on_update` (movement / gameplay only). `Time::delta_seconds()` is always `1/60`.
+   - Advance `Time::tick_index()` and subtract `1/60` s from the accumulator. Leftover time stays for the next frame.
+   - Stop the loop if `request_quit` (Esc) or `EngineConfig::max_ticks` simulation ticks have completed.
+7. Invoke `on_present` once (clear / draw / `present`). Skipped on Esc / close-box so the last frame is not a half-updated draw.
+8. If this display frame used less than `1/60` s of wall time, sleep the remainder so presents hold 60 Hz even without vsync (for example `SDL_VIDEODRIVER=dummy`). A catch-up frame that already overran does not sleep.
+9. Record that **display frame**'s wall time on `Time` (`frame_seconds` / `frames_per_second`), including the sleep — or the overrun if the frame ran long.
+
+Gameplay must use `delta_seconds()` (fixed `1/60`), not `frame_seconds()`. A hitch then does not fling the camera; the engine runs extra simulation ticks (up to 4) and presents once. The HUD can still show the dip in present rate.
 
 The renderer uses SDL3 logical presentation (`SDL_LOGICAL_PRESENTATION_LETTERBOX`) so drawing stays in **logical present pixels** (`EngineConfig` width × height, 1280×720 in the sandbox). The OS window is **resizable** and created with `SDL_WINDOW_HIGH_PIXEL_DENSITY`. Letterboxing is re-applied on `WINDOW_RESIZED` / `PIXEL_SIZE_CHANGED` / `DISPLAY_SCALE_CHANGED` so a driver cannot drop the mapping.
 

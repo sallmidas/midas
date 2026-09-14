@@ -8,14 +8,15 @@
 
 namespace midas {
 
-/// Fixed 60 Hz timestep.
+/// Fixed 60 Hz **simulation** timestep.
 ///
-/// Use `delta_seconds()` (always `1/60` while the loop is capped) for gameplay
-/// such as camera pan. A hitch does not fling the camera — the next tick still
-/// moves as if 16.6 ms passed. `elapsed_seconds()` is wall-clock time since
+/// Use `delta_seconds()` (always `1/60` per `on_update`) for gameplay such as
+/// camera pan. A hitch does not fling the camera — each simulation tick still
+/// moves as if 16.6 ms passed; the engine may run up to `Engine::max_catch_up`
+/// ticks in one display frame. `elapsed_seconds()` is wall-clock time since
 /// `run()` started. `frame_seconds()` / `frames_per_second()` are the previous
-/// completed tick's wall time (work + 60 Hz sleep, or the overrun if a tick
-/// ran long) — HUD / pacing, not motion.
+/// completed **display frame**'s wall time (updates + present + 60 Hz pace
+/// sleep, or the overrun if the frame ran long) — HUD / pacing, not motion.
 class Time {
 public:
     static constexpr int tick_hz = 60;
@@ -31,11 +32,12 @@ public:
     [[nodiscard]] double delta_seconds() const noexcept;
     /// Wall-clock seconds since `run()` started (0 before `run`).
     [[nodiscard]] double elapsed_seconds() const noexcept;
-    /// Wall time of the previous completed tick (work + 60 Hz sleep). HUD, not motion.
+    /// Wall time of the previous completed display frame (work + pace sleep). HUD, not motion.
     [[nodiscard]] double frame_seconds() const noexcept;
-    /// `1 / frame_seconds()`, or 0 if no tick has completed yet / non-finite.
+    /// `1 / frame_seconds()`, or 0 if no display frame has completed yet / non-finite.
     [[nodiscard]] double frames_per_second() const noexcept;
-    /// Ticks completed in the current `run()` (0 after `reset`).
+    /// Simulation ticks completed in the current `run()` (0 after `reset`).
+    /// Each `on_update` increments this; presents do not.
     [[nodiscard]] std::uint64_t tick_index() const noexcept;
 
 private:

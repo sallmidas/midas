@@ -2,6 +2,14 @@
 
 Bullet highlights from the 2D engine fine-tunes on `main`. No 3D / ECS / editor.
 
+## Unreleased (accumulator timestep)
+
+- `Engine::run(on_update, on_present)` replaces the single `on_tick` callback. Simulation is fixed at 60 Hz (`Time::tick_hz`); present runs once per display frame after 0..`Engine::max_catch_up` (4) catch-up ticks.
+- Real-time accumulator on `Engine::Impl`: frame elapsed is added, leftover stays, a hitch longer than 4 ticks is clamped (no death spiral). Dummy video still sleeps the remainder when ahead of 60 Hz.
+- Sandbox: camera / HUD toggle / plinth pulse in `on_update`; clear / draw / `present` in `on_present`.
+- `--smoke` / `MIDAS_SMOKE_FRAMES` still count **simulation ticks** (`EngineConfig::max_ticks`), not presents.
+- Docs: ARCHITECTURE frame-loop + locked policies (construction may throw; in-tick loads must not unwind `run()`; `SDL_Renderer` is the host).
+
 ## Unreleased (sprite atlas)
 
 - `Renderer::draw_texture` accepts a texture-space source `Rect` (atlas cell) in addition to the world dest and optional tint. The existing three-argument call still draws the whole texture (`src == {}` → SDL `nullptr`).
