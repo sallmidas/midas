@@ -1,22 +1,25 @@
 # Midas architecture
 
-Midas is split into a static engine library and a sandbox application. SDL3 is an implementation detail of the engine; public headers under `engine/include/midas/` do not include SDL.
+Midas is split into a static engine library, a sandbox tech gym, and a v0 room game. SDL3 is an implementation detail of the engine; public headers under `engine/include/midas/` do not include SDL.
 
 ## Targets
 
 | Target | Path | Role |
 | --- | --- | --- |
 | `midas` | `engine/` | Core library (`midas::midas`) |
-| `midas_sandbox` | `apps/sandbox/` | Windowed demo that exercises the public API |
+| `midas_sandbox` | `apps/sandbox/` | Tech gym: camera, sprites, atlas, HUD |
+| `midas_room` | `apps/room/` | v0 game: one room, WASD, key, door |
 
-`ctest` in the build tree runs `midas_sandbox --smoke` with `SDL_VIDEODRIVER=dummy`.
+`ctest` in the build tree runs `midas_sandbox --smoke` and `midas_room --smoke` with `SDL_VIDEODRIVER=dummy`. Game v0 scope is in [GAME_V0.md](GAME_V0.md).
 
 ## Public API
 
 ```
 Engine     Owns the SDL video subsystem and the subsystems below.
-           Runs a capped 60 Hz tick loop and pumps OS events.
-           `executable_directory()` is SDL_GetBasePath (asset lookup).
+           Runs an accumulator frame loop: fixed 60 Hz simulation
+           (`on_update`, up to `Engine::max_catch_up` ticks per display
+           frame) then one `on_present`. `executable_directory()` is
+           SDL_GetBasePath (asset lookup).
 Window     OS window (size, title). Native SDL handles stay private.
            `width` / `height` are live **window coordinates** (resizable).
            `pixel_width` / `pixel_height` are the drawable; `pixel_density()`
@@ -36,59 +39,69 @@ Input      Keyboard + mouse (down / pressed this tick), wheel, quit (close box).
            Unfocused key/button events are ignored. A resize or display-scale
            change zeros mouse_delta so letterbox remapping cannot jump a
            right-drag pan.
-Time       Fixed timestep: `Time::tick_hz == 60`, `delta_seconds() == 1/60`
-           (use this for motion). `elapsed_seconds()` is wall-clock.
-           `frame_seconds()` / `frames_per_second()` are the last tick's wall
-           time including the 60 Hz sleep — HUD, not gameplay.
+Time       Fixed simulation timestep: `Time::tick_hz == 60`,
+           `delta_seconds() == 1/60` (use this for motion, once per
+           `on_update`). `elapsed_seconds()` is wall-clock.
+           `frame_seconds()` / `frames_per_second()` are the last
+           **display frame**'s wall time including the 60 Hz pace sleep —
+           HUD, not gameplay.
            `Cooldown` counts remaining seconds until `ready()` (tick with
            `delta_seconds()`, not `frame_seconds()`).
 Renderer   Clear, fill rect, textured quad (optional texture-space source rect
            for atlas cells), present. Applies an orthographic camera.
+           Owns GPU textures; `create_texture` / `load_bmp` return `TextureId`.
            `logical_width` / `logical_height` are the letterboxed present size
            (`EngineConfig`, stable across OS resizes). `logical_size()` is the
            same pair as a `Vec2` for camera math.
            `fill_screen_rect` / `draw_debug_text` are HUD space (ignore camera).
            The sandbox HUD is optional (F1 / backtick); `--smoke` skips it.
            Debug text is best-effort (dummy drivers cannot abort the demo).
-Texture    GPU image from RGBA8 pixels (`create_texture`) or a BMP (`load_bmp`).
-           Nearest-neighbor sampling; destroy before the Renderer.
-           A texture that outlives the renderer skips SDL_DestroyTexture.
+TextureId  Opaque index+generation handle to a GPU image the Renderer owns.
+           Copy freely. Default `{0,0}` is invalid. Destroying Engine/Renderer
+           invalidates ids; `draw_texture` skips a stale/invalid id (no crash).
 Camera     2D ortho view: `position` is the world point at the viewport center.
            Uniform zoom, aspect-correct visible rect, clamped to [0.25, 8].
-Entity     Lightweight transform + size + optional texture. Not an ECS.
+Entity     Lightweight transform + size + optional `TextureId`. Not an ECS.
            `source` is an optional atlas cell in texture pixels (empty = whole
            texture). `Transform::then` composes a child without parent pointers.
+AABB       `aabb_overlap(Rect, Rect)` is half-open overlap (same as
+           `Rect::overlaps`). `aabb_move` slides a body along solids (X then Y).
+           The room game uses both for walls / key / door.
 ```
 
-`Types.hpp` defines `Color`, `Vec2`, `Rect`, and NaN-safe `clamp` / `clamp01`. `Color::lerp` mixes two 0–1 colors (`t` is `clamp01`'d). `Vec2::length_squared` is `x*x+y*y` for comparisons without `hypot` (`length()`). `Vec2::normalized_or_zero` is the unit vector, or `{0,0}` if the length is zero / non-finite. `Rect::overlaps` / `Rect::contains` are half-open 2D AABB helpers (shared edges do not overlap). `Rect::contains_inclusive` is the closed test (`[x, x+w] × [y, y+h]`) used for letterbox present bounds. `Rect::expanded` / `Rect::inset` grow or shrink every edge (a large inset can become an empty rect; a NaN amount is a no-op). `Cooldown` (in `Time.hpp`) is remaining-seconds until `ready()`; tick it with `delta_seconds()`. Non-finite `remaining` is expired. `midas.hpp` is the umbrella include (`Cooldown`, `clamp`, `contains_inclusive`, `make_checkerboard_rgba`, and the rest of the public API).
+`Types.hpp` defines `Color`, `Vec2`, `Rect`, NaN-safe `clamp` / `clamp01`, and the AABB helpers `aabb_overlap` / `aabb_move`. `Color::lerp` mixes two 0–1 colors (`t` is `clamp01`'d). `Vec2::length_squared` is `x*x+y*y` for comparisons without `hypot` (`length()`). `Vec2::normalized_or_zero` is the unit vector, or `{0,0}` if the length is zero / non-finite. `Rect::overlaps` / `Rect::contains` are half-open 2D AABB helpers (shared edges do not overlap). `aabb_overlap(a, b)` is the same test as `a.overlaps(b)`. `aabb_move(body, delta, solids)` applies X then Y and rejects an axis that would overlap a solid (slide along walls). `Rect::contains_inclusive` is the closed test (`[x, x+w] × [y, y+h]`) used for letterbox present bounds. `Rect::expanded` / `Rect::inset` grow or shrink every edge (a large inset can become an empty rect; a NaN amount is a no-op). `Cooldown` (in `Time.hpp`) is remaining-seconds until `ready()`; tick it with `delta_seconds()`. Non-finite `remaining` is expired. `midas.hpp` is the umbrella include (`Cooldown`, `clamp`, `aabb_overlap`, `aabb_move`, `contains_inclusive`, `TextureId`, `make_checkerboard_rgba`, and the rest of the public API).
 
 Games talk only to `Engine` and the types it returns:
 
 ```cpp
 midas::Engine engine({.title = "Midas", .width = 1280, .height = 720});
-auto sprite = engine.renderer().load_bmp(
+midas::TextureId sprite = engine.renderer().load_bmp(
     (engine.executable_directory() / "assets" / "midas_sprite.bmp").string());
 
 midas::Entity tile;
 tile.transform.position = {400.0f, 280.0f};
 tile.size = {160.0f, 160.0f};
-tile.texture = &sprite;
+tile.texture = sprite;
 
 midas::Camera camera = engine.renderer().camera();
 
-engine.run([&](midas::Engine& e) {
-    if (e.input().key_pressed(midas::Key::Escape)) {
-        e.request_quit();
-        return;
-    }
-    e.renderer().set_camera(camera);
-    e.renderer().clear(midas::Color::charcoal());
-    midas::draw_entity(e.renderer(), tile);
-    e.renderer().present();
-});
+engine.run(
+    [&](midas::Engine& e) {
+        if (e.input().key_pressed(midas::Key::Escape)) {
+            e.request_quit();
+            return;
+        }
+        camera.position.x += 40.0f * static_cast<float>(e.time().delta_seconds());
+    },
+    [&](midas::Engine& e) {
+        e.renderer().set_camera(camera);
+        e.renderer().clear(midas::Color::charcoal());
+        midas::draw_entity(e.renderer(), tile);
+        e.renderer().present();
+    });
 ```
 
-A sprite-sheet cell is the same textured quad with a source rect in texture pixels. One `Texture` upload, many cells — no re-upload per draw:
+A sprite-sheet cell is the same textured quad with a source rect in texture pixels. One GPU upload, many cells — no re-upload per draw:
 
 ```cpp
 e.renderer().draw_texture(atlas, dest, midas::Rect{0.0f, 0.0f, 32.0f, 32.0f});
@@ -97,35 +110,47 @@ e.renderer().draw_texture(atlas, dest2, midas::Rect{32.0f, 0.0f, 32.0f, 32.0f});
 
 `Entity::source` is the same rectangle; leave it empty to sample the whole texture. `draw_entity` forwards a positive source to that overload.
 
-`EngineConfig::max_ticks` stops the loop after N ticks (used by `--smoke` / `MIDAS_SMOKE_FRAMES`). Closing the window sets `Input::quit_requested()` and ends the loop.
+`EngineConfig::max_ticks` stops the loop after N **simulation** ticks (`on_update`), used by `--smoke` / `MIDAS_SMOKE_FRAMES`. The env var name is historical: it counts sim ticks, not display presents. Closing the window sets `Input::quit_requested()` and ends the loop.
+
+## Locked policies
+
+- **Construction may throw.** `Engine`, `Window`, `Renderer`, `create_texture`, and `load_bmp` fail by exception. That is the setup path.
+- **In-tick load failures must not unwind the loop.** `on_update` / `on_present` must not throw. If a game loads an asset during a tick, skip the draw or return an error; do not throw through `Engine::run()`. (The sandbox loads the BMP and atlas **before** `run()`.)
+- **`SDL_Renderer` is the host** until a real game demands otherwise. No custom GPU backend, no `SDL_GPU`, no raw OpenGL in this tree.
 
 ## Shutdown
 
 C++ destroys members in reverse declaration order. `Engine::Impl` is declared `SDL → Window → Renderer`, so teardown is:
 
-1. Game `Texture`s — the sandbox declares the BMP *after* `Engine`, so it dies first (the SDL order to learn).
-2. `Renderer` — sets a shared `GpuLifetime` flag, then `SDL_DestroyRenderer` (SDL also frees leftover GPU textures).
-3. `Window` — `SDL_DestroyWindow`.
-4. `SDL_Quit`.
+1. `Renderer` — destroys the GPU textures in its slot vector, then `SDL_DestroyRenderer`.
+2. `Window` — `SDL_DestroyWindow`.
+3. `SDL_Quit`.
 
-If step 1 is skipped, step 2 still tears the GPU down safely: a late `Texture` destructor sees `!alive` and does not call `SDL_DestroyTexture` on a freed handle. Each texture holds a typed `shared_ptr` to that flag (the public constructor takes `shared_ptr<void>` so the header does not name the internal type). `Renderer::Impl` / `Window::Impl` own the native pointers so a constructor that throws after `SDL_CreateRenderer` / `SDL_CreateWindow` still destroys them. Those `Impl` types are not copyable or movable (a default move would duplicate the SDL pointer).
+Games hold `TextureId` copies, not GPU resources. Destroying the `Engine` / `Renderer` invalidates every id it issued. `draw_texture` / `draw_entity` skip an invalid or stale id (no crash). Ids are not valid on a different renderer.
 
-Destroy a `Texture` before the `Renderer` / `Engine` that created it. `Texture` is move-only; move-assignment releases the previous GPU texture (RAII in `Texture::Impl`).
+`Renderer::Impl` / `Window::Impl` own the native pointers so a constructor that throws after `SDL_CreateRenderer` / `SDL_CreateWindow` still destroys them. Those `Impl` types are not copyable or movable (a default move would duplicate the SDL pointer).
 
 ## Frame loop
 
-Each tick:
+Simulation is fixed at 60 Hz (`Time::tick_hz`). Display presents are decoupled: one present per display frame after 0..`Engine::max_catch_up` (4) simulation ticks.
 
-1. Snapshot previous keyboard and mouse-button state (`key_pressed` / `mouse_pressed` are edges). Reset wheel delta.
-2. Pump SDL events into `Input`. Resize, pixel-size, and display-scale changes re-apply letterbox presentation and zero mouse delta. Mouse *event* coordinates are converted to logical space; sampled mouse position is applied in step 3.
-3. Sample `SDL_GetMouseState` (**window coordinates**, not framebuffer pixels) and convert through `SDL_RenderCoordinatesFromWindow` (pixel density + letterbox → logical). A failed conversion keeps the last logical sample — it does not fall back to window or pixel coords, which would break `Camera::zoom_toward` on a high-DPI or letterboxed window.
-4. Stop if quit was requested.
-5. Invoke the tick callback (update + render).
-6. Advance `Time::tick_index()`.
-7. Sleep the remainder of `1/60` s so the loop holds 60 Hz even without vsync (for example `SDL_VIDEODRIVER=dummy`).
-8. Record that tick's wall time on `Time` (`frame_seconds` / `frames_per_second`), including the sleep — or the overrun if the tick ran long.
+Each **display frame**:
 
-Gameplay must use `delta_seconds()` (fixed `1/60`), not `frame_seconds()`. A hitch then does not fling the camera; the HUD can still show the dip in FPS.
+1. Measure wall time since the previous frame. Clamp that elapsed time to at most `max_catch_up` ticks (a debugger pause cannot queue unbounded catch-up). Add it to an accumulator on `Engine` (not on `Time`).
+2. Snapshot previous keyboard and mouse-button state (`key_pressed` / `mouse_pressed` are edges). Reset wheel delta.
+3. Pump SDL events into `Input`. Resize, pixel-size, and display-scale changes re-apply letterbox presentation and zero mouse delta. Mouse *event* coordinates are converted to logical space; sampled mouse position is applied in step 4.
+4. Sample `SDL_GetMouseState` (**window coordinates**, not framebuffer pixels) and convert through `SDL_RenderCoordinatesFromWindow` (pixel density + letterbox → logical). A failed conversion keeps the last logical sample — it does not fall back to window or pixel coords, which would break `Camera::zoom_toward` on a high-DPI or letterboxed window.
+5. Stop if quit was requested (close box). No `on_update` / `on_present` this frame.
+6. While the accumulator holds at least `1/60` s and fewer than `max_catch_up` ticks have run this frame:
+   - Extra catch-up ticks call `Input::begin_frame` again **without** re-pumping OS events, so `key_pressed`, wheel, and `mouse_delta` fire once per display frame. Held keys (`key_down`) still apply on every simulation tick (WASD pan stays at 60 Hz).
+   - Invoke `on_update` (movement / gameplay only). `Time::delta_seconds()` is always `1/60`.
+   - Advance `Time::tick_index()` and subtract `1/60` s from the accumulator. Leftover time stays for the next frame.
+   - Stop the loop if `request_quit` (Esc) or `EngineConfig::max_ticks` simulation ticks have completed.
+7. Invoke `on_present` once (clear / draw / `present`). Skipped on Esc / close-box so the last frame is not a half-updated draw.
+8. If this display frame used less than `1/60` s of wall time, sleep the remainder so presents hold 60 Hz even without vsync (for example `SDL_VIDEODRIVER=dummy`). A catch-up frame that already overran does not sleep.
+9. Record that **display frame**'s wall time on `Time` (`frame_seconds` / `frames_per_second`), including the sleep — or the overrun if the frame ran long.
+
+Gameplay must use `delta_seconds()` (fixed `1/60`), not `frame_seconds()`. A hitch then does not fling the camera; the engine runs extra simulation ticks (up to 4) and presents once. The HUD can still show the dip in present rate.
 
 The renderer uses SDL3 logical presentation (`SDL_LOGICAL_PRESENTATION_LETTERBOX`) so drawing stays in **logical present pixels** (`EngineConfig` width × height, 1280×720 in the sandbox). The OS window is **resizable** and created with `SDL_WINDOW_HIGH_PIXEL_DENSITY`. Letterboxing is re-applied on `WINDOW_RESIZED` / `PIXEL_SIZE_CHANGED` / `DISPLAY_SCALE_CHANGED` so a driver cannot drop the mapping.
 
@@ -160,14 +185,16 @@ The sandbox pans with WASD / arrows (or right-mouse drag) at constant **screen-s
 
 ## Textures
 
-Two upload paths, both SDL-private:
+Two upload paths, both SDL-private. Both return a `TextureId`; the renderer owns the GPU image:
 
 1. **CPU pixels** — `make_checkerboard_rgba` (or any tightly packed RGBA8 buffer) + `Renderer::create_texture`.
 2. **BMP file** — `Renderer::load_bmp`. SDL3 loads BMP without SDL_image. PNG can wait until that dependency is worth it.
 
 Both paths throw on bad input (empty path, missing file, undersized pixel buffer, invalid size). `load_bmp` puts the path in the exception; it does not return a dummy texture. `make_checkerboard_rgba` `clamp01`s finite channels; non-finite RGB becomes 0 and non-finite alpha becomes 1 (the same fallback as renderer color mods).
 
-`Renderer::draw_texture(texture, dest, src, tint)` samples `src` in texture pixels (top-left origin). The sandbox uploads a 64×32 two-cell sheet once (`make_checkerboard_rgba` with `cell_size == 32`) and draws the gold cell and the bronze cell side by side — same `Texture`, two source rects, no re-upload. The three-argument `draw_texture` (and an `Entity` with default `source`) still draws the whole image.
+Query size with `texture_width` / `texture_height` (0 if the id is invalid or stale). `texture_valid` is false for the default id and for a generation the registry does not have.
+
+`Renderer::draw_texture(id, dest, src, tint)` samples `src` in texture pixels (top-left origin). A missing or stale `TextureId` is a no-op (no crash). The sandbox uploads a 64×32 two-cell sheet once (`make_checkerboard_rgba` with `cell_size == 32`) and draws the gold cell and the bronze cell side by side — same handle, two source rects, no re-upload. The three-argument `draw_texture` (and an `Entity` with default `source`) still draws the whole image.
 
 Textures use nearest-neighbor sampling (`SDL_SCALEMODE_NEAREST`) so pixel art stays sharp when the camera zooms. Linear filtering is intentionally not exposed yet.
 
@@ -177,9 +204,11 @@ The sandbox locates `assets/midas_sprite.bmp` via `Engine::executable_directory(
 
 `Transform` is position + scale (no rotation). `parent.then(local)` composes a child in the parent's space — a scene-graph starter without storing parent pointers that can dangle.
 
-`Entity` is a drawable bag of data: transform, unscaled size, color (fill or texture tint), an optional **non-owning** `const Texture*`, and an optional texture-space `source` rect (atlas cell; empty / non-positive size means the whole texture). Keep entities in an array; draw with `draw_entity` (skips a non-finite or non-positive dest).
+`Entity` is a drawable bag of data: transform, unscaled size, color (fill or texture tint), an optional `TextureId` (default invalid = solid fill), and an optional texture-space `source` rect (atlas cell; empty / non-positive size means the whole texture). Keep entities in an array; draw with `draw_entity` (skips a non-finite or non-positive dest). A minted-looking but stale handle is skipped by `draw_texture`, not turned into a fill.
 
-`Rect` is the 2D AABB (`x, y, w, h` with top-left origin). `contains` is half-open (`[x, x+w) × [y, y+h)`). `overlaps` uses the same edges, so rectangles that only share a boundary do not overlap, and a zero-size rect is empty. `contains_inclusive` is closed (`[x, x+w] × [y, y+h]`) for letterbox present bounds. `expanded(amount)` / `inset(amount)` grow or shrink every edge; a large inset can yield a non-positive size (empty). `Entity::overlaps` is the collision starter. Width/height should stay non-negative.
+`Rect` is the 2D AABB (`x, y, w, h` with top-left origin). `contains` is half-open (`[x, x+w) × [y, y+h)`). `overlaps` / `aabb_overlap` use the same edges, so rectangles that only share a boundary do not overlap, and a zero-size rect is empty. `aabb_move` tries X then Y against a span of solids so a body can slide along a wall. `contains_inclusive` is closed (`[x, x+w] × [y, y+h]`) for letterbox present bounds. `expanded(amount)` / `inset(amount)` grow or shrink every edge; a large inset can yield a non-positive size (empty). `Entity::overlaps` calls `aabb_overlap` on the two bounds. Width/height should stay non-negative.
+
+The v0 room app (`midas_room`) is the first game on this API: walls are solids, the locked door is a solid, key pickup is overlap, and overlapping the open door wins. See [GAME_V0.md](GAME_V0.md).
 
 `Color::lerp(a, b, t)` is the 0–1 mix used by the sandbox plinth (gold toward bronze). `t` is `clamp01`'d (NaN / negative → 0; Inf / above 1 → 1). `clamp` / `clamp01` are the NaN-safe float helpers (`std::clamp` is undefined when `lo > hi`). `Vec2::normalized_or_zero` is the unit vector used for WASD pan (zero / NaN / Inf → `{0,0}`). `Cooldown` is remaining-seconds until `ready()`; tick it with the fixed `delta_seconds()` step. Non-finite `remaining` is expired (`ready()`, and `tick` snaps it to 0).
 

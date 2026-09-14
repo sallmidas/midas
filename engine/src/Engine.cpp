@@ -40,9 +40,10 @@ struct Engine::Impl {
 
     EngineConfig config;
     bool running{false};
-    // Construct: SDL → Window → Renderer. Destroy (reverse): Renderer →
-    // Window → SDL_Quit. Drop game Textures before Engine; leftover Texture
-    // dtors no-op after Renderer clears GpuLifetime::alive.
+    std::uint64_t accumulator_ns{0};
+    // Construct: SDL → Window → Renderer. Destroy (reverse): Renderer
+    // (owned GPU textures, then SDL_DestroyRenderer) → Window → SDL_Quit.
+    // Games hold TextureId copies; those ids are invalid after this Engine.
     SdlVideo sdl;
     Window window;
     Renderer renderer;
@@ -151,14 +152,29 @@ void Engine::pump_events() {
     }
 }
 
-int Engine::run(std::function<void(Engine&)> on_tick) {
+int Engine::run(std::function<void(Engine&)> on_update, std::function<void(Engine&)> on_present) {
+    constexpr std::uint64_t tick_ns = 1'000'000'000 / static_cast<std::uint64_t>(Time::tick_hz);
+    // A stall longer than this is treated as this much wall time so a debugger
+    // pause cannot queue minutes of catch-up. Sub-tick leftover still stays.
+    constexpr std::uint64_t max_frame_ns = tick_ns * static_cast<std::uint64_t>(max_catch_up);
+
     impl_->running = true;
     impl_->time.reset();
+    // One tick already due so the first display frame simulates once (same as
+    // the old 1:1 loop) instead of presenting an un-updated frame then sleeping.
+    impl_->accumulator_ns = tick_ns;
 
-    constexpr std::uint64_t tick_ns = 1'000'000'000 / static_cast<std::uint64_t>(Time::tick_hz);
+    auto last_ns = SDL_GetTicksNS();
 
     while (impl_->running) {
         const auto frame_start = SDL_GetTicksNS();
+        std::uint64_t elapsed = (frame_start >= last_ns) ? (frame_start - last_ns) : 0;
+        last_ns = frame_start;
+        if (elapsed > max_frame_ns) {
+            elapsed = max_frame_ns;
+        }
+
+        impl_->accumulator_ns += elapsed;
 
         impl_->input.begin_frame();
         pump_events();
@@ -168,22 +184,52 @@ int Engine::run(std::function<void(Engine&)> on_tick) {
             break;
         }
 
-        if (on_tick) {
-            on_tick(*this);
+        int sim_ticks = 0;
+        while (impl_->running && impl_->accumulator_ns >= tick_ns && sim_ticks < max_catch_up) {
+            if (sim_ticks > 0) {
+                // Same OS events as the first tick this frame. Clear pressed
+                // edges, wheel, and mouse delta so a hitch cannot toggle F1
+                // four times or apply one drag four times; key_down still pans.
+                impl_->input.begin_frame();
+            }
+
+            if (on_update) {
+                on_update(*this);
+            }
+
+            impl_->time.advance_tick();
+            impl_->accumulator_ns -= tick_ns;
+            ++sim_ticks;
+
+            if (impl_->input.quit_requested()) {
+                impl_->running = false;
+                break;
+            }
+            if (impl_->config.max_ticks > 0 &&
+                impl_->time.tick_index() >= static_cast<std::uint64_t>(impl_->config.max_ticks)) {
+                impl_->running = false;
+                break;
+            }
         }
 
-        impl_->time.advance_tick();
-        if (impl_->config.max_ticks > 0 &&
-            impl_->time.tick_index() >= static_cast<std::uint64_t>(impl_->config.max_ticks)) {
-            impl_->running = false;
+        // Close-box / Esc skip present so the last frame is not a half-updated draw.
+        if (!impl_->input.quit_requested() && on_present) {
+            on_present(*this);
         }
 
-        const auto elapsed = SDL_GetTicksNS() - frame_start;
-        if (elapsed < tick_ns) {
-            SDL_DelayNS(tick_ns - elapsed);
+        if (!impl_->running) {
+            impl_->time.complete_frame(SDL_GetTicksNS() - frame_start);
+            break;
         }
-        // Wall time of this tick including the 60 Hz wait (or the overrun).
-        // Gameplay still uses Time::delta_seconds() == 1/60; HUD uses this.
+
+        // Pace display frames when ahead of 60 Hz (dummy video has no vsync).
+        // Sleep the remainder of this frame's 1/60 s wall budget — a catch-up
+        // frame that already overran does not wait. Included in frame_seconds
+        // so the HUD reads ~tick_hz when on time.
+        const auto used_ns = SDL_GetTicksNS() - frame_start;
+        if (used_ns < tick_ns) {
+            SDL_DelayNS(tick_ns - used_ns);
+        }
         impl_->time.complete_frame(SDL_GetTicksNS() - frame_start);
     }
 

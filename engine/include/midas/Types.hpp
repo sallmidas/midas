@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cmath>
+#include <span>
 
 namespace midas {
 
@@ -176,5 +177,45 @@ struct Rect {
         return expanded(-amount);
     }
 };
+
+/// Half-open AABB overlap. Shared edges do not count. Same rule as `Rect::overlaps`.
+[[nodiscard]] constexpr bool aabb_overlap(const Rect& a, const Rect& b) noexcept {
+    return a.overlaps(b);
+}
+
+/// Move `body` by `delta`, sliding along `solids`. X is applied first, then Y.
+/// An axis is rejected if the moved rect overlaps any solid with positive size.
+/// Non-finite delta components are treated as 0.
+[[nodiscard]] inline Rect aabb_move(Rect body, Vec2 delta, std::span<const Rect> solids) noexcept {
+    if (!std::isfinite(delta.x)) {
+        delta.x = 0.0f;
+    }
+    if (!std::isfinite(delta.y)) {
+        delta.y = 0.0f;
+    }
+
+    const auto blocked = [&](const Rect& candidate) {
+        for (const Rect& solid : solids) {
+            if (!(solid.w > 0.0f) || !(solid.h > 0.0f)) {
+                continue;
+            }
+            if (aabb_overlap(candidate, solid)) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    Rect next = body;
+    next.x += delta.x;
+    if (blocked(next)) {
+        next.x = body.x;
+    }
+    next.y += delta.y;
+    if (blocked(next)) {
+        next.y = body.y;
+    }
+    return next;
+}
 
 }  // namespace midas

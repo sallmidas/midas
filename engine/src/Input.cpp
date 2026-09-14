@@ -9,7 +9,7 @@
 namespace midas {
 namespace {
 
-constexpr std::size_t key_count = static_cast<std::size_t>(Key::Grave) + 1;
+constexpr std::size_t key_count = static_cast<std::size_t>(Key::R) + 1;
 constexpr std::size_t mouse_button_count = static_cast<std::size_t>(MouseButton::Middle) + 1;
 
 int index_of(Key key) noexcept {
@@ -67,6 +67,9 @@ bool map_key(SDL_Keycode code, Key& out) noexcept {
         case SDLK_GRAVE:
             out = Key::Grave;
             return true;
+        case SDLK_R:
+            out = Key::R;
+            return true;
         default:
             return false;
     }
@@ -104,6 +107,8 @@ SDL_Keycode sdl_keycode(Key key) noexcept {
             return SDLK_F1;
         case Key::Grave:
             return SDLK_GRAVE;
+        case Key::R:
+            return SDLK_R;
     }
     return SDLK_UNKNOWN;
 }
@@ -346,7 +351,7 @@ void Input::sync_held_from_device() noexcept {
         static constexpr Key kKeys[] = {
             Key::Escape, Key::Space, Key::Enter, Key::W, Key::A, Key::S, Key::D,
             Key::Q,      Key::E,     Key::Left,  Key::Right, Key::Up,   Key::Down,
-            Key::F1,     Key::Grave,
+            Key::F1,     Key::Grave, Key::R,
         };
         for (Key key : kKeys) {
             const SDL_Scancode scancode = SDL_GetScancodeFromKey(sdl_keycode(key), nullptr);

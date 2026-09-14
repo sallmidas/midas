@@ -4,7 +4,7 @@ The engine is C++20. SDL3 is C, so the top-level CMake project enables both lang
 
 ## How to run on Saul’s Mac
 
-On Apple Silicon with Homebrew on `PATH`: `brew install cmake ninja sdl3`, then from the repo root `cmake --preset debug`, `cmake --build --preset debug`, and `./build/debug/bin/midas_sandbox`. CMake should resolve the keg via `brew --prefix sdl3` (`/opt/homebrew/opt/sdl3`) rather than FetchContent. Headless check: `ctest --preset debug`, or `SDL_VIDEODRIVER=dummy ./build/debug/bin/midas_sandbox --smoke`.
+On Apple Silicon with Homebrew on `PATH`: `brew install cmake ninja sdl3`, then from the repo root `cmake --preset debug`, `cmake --build --preset debug`, and `./build/debug/bin/midas_sandbox` or `./build/debug/bin/midas_room`. CMake should resolve the keg via `brew --prefix sdl3` (`/opt/homebrew/opt/sdl3`) rather than FetchContent. Headless check: `ctest --preset debug`, or `SDL_VIDEODRIVER=dummy ./build/debug/bin/midas_sandbox --smoke` and the same for `midas_room`.
 
 ## Prerequisites
 
@@ -56,13 +56,14 @@ cmake --preset debug
 cmake --build --preset debug
 ```
 
-The debug tree is `build/debug/`. The sandbox binary is:
+The debug tree is `build/debug/`. Binaries land next to each other:
 
 ```bash
 ./build/debug/bin/midas_sandbox
+./build/debug/bin/midas_room
 ```
 
-CMake copies `apps/sandbox/assets/midas_sprite.bmp` next to that binary (`build/debug/bin/assets/`). Changing the BMP recopies it even if the sandbox did not relink. `cmake --install --prefix <prefix>` puts `midas_sandbox` in `<prefix>/bin` and the BMP in `<prefix>/bin/assets`.
+CMake copies `apps/sandbox/assets/midas_sprite.bmp` next to the sandbox binary (`build/debug/bin/assets/`). Changing the BMP recopies it even if the sandbox did not relink. `cmake --install --prefix <prefix>` puts both binaries in `<prefix>/bin` and the BMP in `<prefix>/bin/assets`.
 
 Release is the same flow with optimizations:
 
@@ -70,6 +71,7 @@ Release is the same flow with optimizations:
 cmake --preset release
 cmake --build --preset release
 ./build/release/bin/midas_sandbox
+./build/release/bin/midas_room
 ```
 
 `compile_commands.json` is generated in `build/debug/` (and `build/release/`) for clangd.
@@ -90,15 +92,28 @@ The sandbox clears to charcoal and draws a small gold/bronze scene: a tiled floo
 
 Textures use **nearest-neighbor** sampling so the BMP stays sharp when zoomed.
 
-Headless / CI smoke (a few 60 Hz ticks, then exit). This path runs a header-only math self-check **before** SDL (clamp, Vec2 including `normalized_or_zero`, Color, Rect AABB / `expanded` / `contains_inclusive`, Camera including Inf zoom → 1, Transform, Entity, Cooldown, CPU `make_checkerboard_rgba`, three-space mouse policy) and fails if the BMP was not copied next to the binary. `--smoke` always loads that BMP, so the checkerboard fallback is exercised only by the CPU self-check (and by an interactive run with a missing file). It does **not** require the debug HUD, does **not** print the interactive logical/window/pixel size line, and does **not** call `SDL_RenderCoordinatesFromWindow` (that converter needs a renderer and stays interactive-only):
+`midas_room` is a separate binary in the same `bin/` directory. One bronze-walled room, WASD on the floor plane, AABB vs walls, a gold key, a door that stays blocked until the key is held, a win overlay, and **R** to restart. The camera is the identity logical view (no pan/zoom). See [GAME_V0.md](GAME_V0.md).
+
+| Input | Action |
+| --- | --- |
+| **WASD** / arrows | Move |
+| Overlap the key | Unlock the door |
+| Overlap the open door | Win |
+| **R** | Restart |
+| **Esc** or close the window | Quit |
+
+Headless / CI smoke (a few 60 Hz **simulation** ticks, then exit). The sandbox path runs a header-only math self-check **before** SDL (clamp, Vec2 including `normalized_or_zero`, Color, Rect AABB / `aabb_overlap` / `aabb_move` / `expanded` / `contains_inclusive`, Camera including Inf zoom → 1, Transform, Entity, `TextureId`, Cooldown, CPU `make_checkerboard_rgba`, three-space mouse policy) and fails if the BMP was not copied next to the binary. `--smoke` always loads that BMP, so the checkerboard fallback is exercised only by the CPU self-check (and by an interactive run with a missing file). It does **not** require the debug HUD, does **not** print the interactive logical/window/pixel size line, and does **not** call `SDL_RenderCoordinatesFromWindow` (that converter needs a renderer and stays interactive-only):
 
 ```bash
 SDL_VIDEODRIVER=dummy ./build/debug/bin/midas_sandbox --smoke
+SDL_VIDEODRIVER=dummy ./build/debug/bin/midas_room --smoke
 ctest --preset debug
 # equivalent: ctest --test-dir build/debug --output-on-failure
 ```
 
-`MIDAS_SMOKE_FRAMES` is an alternative to `--smoke` (must be a positive integer).
+`midas_room --smoke` checks AABB + a scripted key→door win/restart, then the same dummy-video ticks. It does not need the sandbox BMP. After a build, `ctest --preset debug` (and `ctest --preset release`) run both smokes.
+
+`MIDAS_SMOKE_FRAMES` is an alternative to `--smoke` (must be a positive integer). It counts **simulation ticks** (`on_update`), not display presents — the name is leftover from the 1:1 loop.
 
 If you run the sandbox **without** `--smoke` and the BMP is missing, it prints every directory it searched and uses a generated checkerboard instead. That fallback is logged; it is not silent.
 
@@ -109,20 +124,21 @@ If you run the sandbox **without** `--smoke` and the BMP is missing, it prints e
 | `debug` | Debug | Ninja | `build/debug` |
 | `release` | Release | Ninja | `build/release` |
 
-Configure and build with `cmake --preset debug` and `cmake --build --preset debug`. After a build, `ctest --preset debug` (and `ctest --preset release`) run the dummy-video sandbox smoke. Both configure presets set `CMAKE_EXPORT_COMPILE_COMMANDS=ON`. Example without presets:
+Configure and build with `cmake --preset debug` and `cmake --build --preset debug`. After a build, `ctest --preset debug` (and `ctest --preset release`) run the dummy-video sandbox **and** room smokes. Both configure presets set `CMAKE_EXPORT_COMPILE_COMMANDS=ON`. Example without presets:
 
 ```bash
 cmake -S . -B build/debug -G Ninja -DCMAKE_BUILD_TYPE=Debug
 cmake --build build/debug
 ```
 
-On Linux, the sandbox `BUILD_RPATH` / `INSTALL_RPATH` is `$ORIGIN` (plus the Homebrew keg `lib/` if `brew --prefix sdl3` succeeded) so a shared libSDL3 placed next to the binary can be found. On macOS it is `@executable_path`, then the keg `lib/` (`…/opt/sdl3/lib`), then `/opt/homebrew/lib` and `/usr/local/lib`. Homebrew bottles usually embed an absolute keg install name; rpath covers `@rpath` dylibs and a copied `libSDL3` beside the executable.
+On Linux, each app `BUILD_RPATH` / `INSTALL_RPATH` is `$ORIGIN` (plus the Homebrew keg `lib/` if `brew --prefix sdl3` succeeded) so a shared libSDL3 placed next to the binary can be found. On macOS it is `@executable_path`, then the keg `lib/` (`…/opt/sdl3/lib`), then `/opt/homebrew/lib` and `/usr/local/lib`. Homebrew bottles usually embed an absolute keg install name; rpath covers `@rpath` dylibs and a copied `libSDL3` beside the executable.
 
-Install the sandbox and its BMP (optional):
+Install the sandbox (and its BMP) plus the room binary (optional):
 
 ```bash
 cmake --install build/debug --prefix /tmp/midas-install
 /tmp/midas-install/bin/midas_sandbox
+/tmp/midas-install/bin/midas_room
 ```
 
 ## Homebrew vs FetchContent

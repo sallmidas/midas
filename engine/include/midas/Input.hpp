@@ -23,7 +23,8 @@ enum class Key {
     Up,
     Down,
     F1,
-    Grave,  // backtick / tilde key — keep last (array bound)
+    Grave,  // backtick / tilde key
+    R,      // keep last (array bound)
 };
 
 /// Add new buttons at the end (`Input` sizes its array from the last value).

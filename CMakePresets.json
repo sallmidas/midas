@@ -48,7 +48,7 @@
       "name": "debug",
       "configurePreset": "debug",
       "displayName": "Debug tests",
-      "description": "ctest in the debug tree: midas_sandbox --smoke with SDL_VIDEODRIVER=dummy.",
+      "description": "ctest in the debug tree: sandbox and room --smoke with SDL_VIDEODRIVER=dummy.",
       "output": {
         "outputOnFailure": true
       }
@@ -57,7 +57,7 @@
       "name": "release",
       "configurePreset": "release",
       "displayName": "Release tests",
-      "description": "ctest in the release tree (same dummy-video smoke as debug).",
+      "description": "ctest in the release tree (sandbox and room dummy-video smoke).",
       "output": {
         "outputOnFailure": true
       }

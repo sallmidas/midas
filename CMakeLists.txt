@@ -20,3 +20,4 @@ include(CTest)
 
 add_subdirectory(engine)
 add_subdirectory(apps/sandbox)
+add_subdirectory(apps/room)
