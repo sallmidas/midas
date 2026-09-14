@@ -18,6 +18,7 @@ namespace {
 
 constexpr int kSmokeTicks = 3;
 constexpr int kAtlasCell = 32;
+constexpr midas::Color kHazardFill{0.78f, 0.16f, 0.12f, 1.0f};
 
 int parse_smoke_ticks(int argc, char** argv) {
     for (int i = 1; i < argc; ++i) {
@@ -94,7 +95,7 @@ void self_check_room() {
 
     {
         Room room = Room::make();
-        expect(room.wall_count == 8 && !room.has_key && !room.won,
+        expect(room.wall_count == 8 && !room.has_key && !room.won && !room.failed,
                "Midas room self-check: fresh room should be locked, 8 walls");
         expect(!room.player_overlaps_solid(),
                "Midas room self-check: spawn should not overlap a solid");
@@ -102,6 +103,8 @@ void self_check_room() {
                "Midas room self-check: spawn should not already hold the key");
         expect(!midas::aabb_overlap(room.player, room.door),
                "Midas room self-check: spawn should not overlap the door");
+        expect(!midas::aabb_overlap(room.player, room.hazard),
+               "Midas room self-check: spawn should not overlap the hazard");
     }
 
     {
@@ -111,6 +114,8 @@ void self_check_room() {
         }
         expect(!room.player_overlaps_solid(),
                "Midas room self-check: walking into the west wall should not penetrate");
+        expect(!room.failed,
+               "Midas room self-check: west-wall walk should not touch the hazard");
         expect(room.player.x + 0.01f >= midas::room::kFloor.x,
                "Midas room self-check: player should stay on the floor side of the west wall");
     }
@@ -122,7 +127,7 @@ void self_check_room() {
         for (int i = 0; i < 90; ++i) {
             room.tick({1.0f, 0.0f}, dt, false);
         }
-        expect(!room.won && !room.has_key,
+        expect(!room.won && !room.has_key && !room.failed,
                "Midas room self-check: a locked door should not be a win");
         expect(!midas::aabb_overlap(room.player, room.door),
                "Midas room self-check: locked door should block like a wall");
@@ -138,6 +143,8 @@ void self_check_room() {
             room.tick({1.0f, 0.0f}, dt, false);
         }
         expect(room.has_key, "Midas room self-check: scripted path should pick up the key");
+        expect(!room.failed,
+               "Midas room self-check: key pickup path should not touch the hazard");
         expect(!room.player_overlaps_solid(),
                "Midas room self-check: key pickup path should stay out of walls");
 
@@ -147,13 +154,35 @@ void self_check_room() {
         for (int i = 0; i < 200 && !room.won; ++i) {
             room.tick({1.0f, 0.0f}, dt, false);
         }
-        expect(room.won, "Midas room self-check: overlapping the open door should win");
+        expect(room.won && !room.failed,
+               "Midas room self-check: overlapping the open door should win");
         expect(midas::aabb_overlap(room.player, room.door),
                "Midas room self-check: win pose should overlap the open door");
 
         room.tick({}, dt, true);
-        expect(!room.won && !room.has_key && std::abs(room.player.x - 200.0f) < 0.01f,
+        expect(!room.won && !room.failed && !room.has_key &&
+                   std::abs(room.player.x - 200.0f) < 0.01f,
                "Midas room self-check: R/restart should restore spawn state");
+    }
+
+    {
+        Room room = Room::make();
+        for (int i = 0; i < 180 && !room.failed; ++i) {
+            room.tick({1.0f, 0.0f}, dt, false);
+        }
+        expect(room.failed && !room.won,
+               "Midas room self-check: walking east from spawn should hit the hazard");
+        expect(midas::aabb_overlap(room.player, room.hazard),
+               "Midas room self-check: fail pose should overlap the hazard");
+
+        const float x_at_fail = room.player.x;
+        room.tick({1.0f, 0.0f}, dt, false);
+        expect(std::abs(room.player.x - x_at_fail) < 0.01f,
+               "Midas room self-check: fail should freeze motion until restart");
+
+        room.tick({}, dt, true);
+        expect(!room.failed && !room.won && std::abs(room.player.x - 200.0f) < 0.01f,
+               "Midas room self-check: R/restart after fail should restore spawn");
     }
 }
 
@@ -207,25 +236,30 @@ void draw_hud(midas::Renderer& renderer, const midas::room::Room& room) {
     constexpr float x = 16.0f;
     constexpr float y = 12.0f;
     constexpr float line_h = 12.0f;
-    const midas::Rect banner{x, y, 520.0f, 40.0f};
+    const midas::Rect banner{x, y, 620.0f, 40.0f};
     renderer.fill_screen_rect(banner.expanded(6.0f), {0.0f, 0.0f, 0.0f, 0.55f});
     renderer.draw_debug_text({x, y}, "WASD move   R restart   Esc quit", midas::Color::gold());
 
     std::ostringstream status;
     status << (room.has_key ? "Key: GOT IT" : "Key: --") << "   "
-           << (room.won ? "Door: YOU WIN" : (room.has_key ? "Door: OPEN" : "Door: locked"));
+           << (room.failed ? "FAIL"
+                           : (room.won ? "Door: YOU WIN"
+                                       : (room.has_key ? "Door: OPEN" : "Door: locked")));
     renderer.draw_debug_text({x, y + line_h}, status.str(), midas::Color::white());
-    renderer.draw_debug_text({x, y + line_h * 2.0f}, "Fixed room camera. Overlap the open door to win.",
+    renderer.draw_debug_text({x, y + line_h * 2.0f},
+                             "Fixed room camera. Avoid the red pit. Overlap the open door to win.",
                              midas::Color::bronze());
 }
 
-void draw_win_overlay(midas::Renderer& renderer) {
+void draw_end_overlay(midas::Renderer& renderer, bool won) {
     renderer.fill_screen_rect({0.0f, 0.0f, midas::room::kLogicalW, midas::room::kLogicalH},
                               {0.0f, 0.0f, 0.0f, 0.55f});
     const midas::Rect banner{340.0f, 250.0f, 600.0f, 180.0f};
-    renderer.fill_screen_rect(banner, midas::Color::gold());
+    const midas::Color accent = won ? midas::Color::gold() : kHazardFill;
+    renderer.fill_screen_rect(banner, accent);
     renderer.fill_screen_rect(banner.inset(10.0f), midas::Color::charcoal());
-    renderer.draw_debug_text({560.0f, 310.0f}, "YOU WIN", midas::Color::gold());
+    renderer.draw_debug_text({won ? 560.0f : 540.0f, 310.0f}, won ? "YOU WIN" : "YOU FAILED",
+                             accent);
     renderer.draw_debug_text({500.0f, 350.0f}, "Press R to restart", midas::Color::white());
 }
 
@@ -265,7 +299,8 @@ int main(int argc, char** argv) {
                                         static_cast<float>(kAtlasCell)};
 
         if (show_hud) {
-            std::cerr << "Midas room: WASD move, get the key, walk through the door. R restarts.\n";
+            std::cerr << "Midas room: WASD move, avoid the red pit, get the key, walk through "
+                         "the door. R restarts.\n";
         }
 
         const int status = engine.run(
@@ -276,7 +311,7 @@ int main(int argc, char** argv) {
                 }
 
                 midas::Vec2 wish{};
-                if (engine.input().window_focused() && !room.won) {
+                if (engine.input().window_focused() && !room.won && !room.failed) {
                     wish = wish_from_input(engine.input());
                 }
                 const float dt = static_cast<float>(engine.time().delta_seconds());
@@ -292,6 +327,8 @@ int main(int argc, char** argv) {
                     renderer.fill_rect(room.walls[i], midas::Color::bronze());
                 }
 
+                renderer.fill_rect(room.hazard, kHazardFill);
+
                 const midas::Color door_tint =
                     (room.has_key || room.won) ? midas::Color::gold() : midas::Color::bronze();
                 renderer.draw_texture(atlas, room.door, kDoorCell, door_tint);
@@ -302,8 +339,8 @@ int main(int argc, char** argv) {
 
                 if (show_hud) {
                     draw_hud(renderer, room);
-                    if (room.won) {
-                        draw_win_overlay(renderer);
+                    if (room.won || room.failed) {
+                        draw_end_overlay(renderer, room.won);
                     }
                 }
                 renderer.present();

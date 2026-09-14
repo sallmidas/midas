@@ -21,16 +21,21 @@ struct Room {
     Rect player{};
     Rect key{};
     Rect door{};
+    Rect hazard{};
     std::array<Rect, max_walls> walls{};
     std::size_t wall_count{};
     bool has_key{false};
     bool won{false};
+    bool failed{false};
 
     [[nodiscard]] static Room make() {
         Room room;
         room.player = {200.0f, 540.0f, 40.0f, 40.0f};
         room.key = {920.0f, 140.0f, 24.0f, 24.0f};
         room.door = {1104.0f, 296.0f, 36.0f, 128.0f};
+        // Trigger AABB, not a solid: overlap fails. South of the north-corridor
+        // key path so WASD-north then east still wins.
+        room.hazard = {400.0f, 500.0f, 96.0f, 80.0f};
 
         auto add_wall = [&](Rect wall) {
             room.walls[room.wall_count++] = wall;
@@ -72,13 +77,13 @@ struct Room {
     }
 
     /// `wish` is a WASD direction (not required to be unit length). `restart`
-    /// reloads the room. After a win, motion freezes until restart.
+    /// reloads the room. After a win or fail, motion freezes until restart.
     void tick(Vec2 wish, float dt, bool restart) {
         if (restart) {
             reset();
             return;
         }
-        if (won) {
+        if (won || failed) {
             return;
         }
 
@@ -87,6 +92,10 @@ struct Room {
         const Vec2 delta = wish.normalized_or_zero() * kPlayerSpeed * dt;
         player = aabb_move(player, delta, std::span<const Rect>(solids.data(), n));
 
+        if (aabb_overlap(player, hazard)) {
+            failed = true;
+            return;
+        }
         if (!has_key && aabb_overlap(player, key)) {
             has_key = true;
         }

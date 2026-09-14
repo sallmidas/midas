@@ -92,14 +92,15 @@ The sandbox clears to charcoal and draws a small gold/bronze scene: a tiled floo
 
 Textures use **nearest-neighbor** sampling so the BMP stays sharp when zoomed.
 
-`midas_room` is a separate binary in the same `bin/` directory. One bronze-walled room, WASD on the floor plane, AABB vs walls, a gold key, a door that stays blocked until the key is held, a win overlay, and **R** to restart. The camera is the identity logical view (no pan/zoom). See [GAME_V0.md](GAME_V0.md).
+`midas_room` is a separate binary in the same `bin/` directory. One bronze-walled room, WASD on the floor plane, AABB vs walls, a gold key, a door that stays blocked until the key is held, one stationary red hazard (overlap fails), win/fail overlays, and **R** to restart. The camera is the identity logical view (no pan/zoom). See [GAME_V0.md](GAME_V0.md).
 
 | Input | Action |
 | --- | --- |
 | **WASD** / arrows | Move |
 | Overlap the key | Unlock the door |
 | Overlap the open door | Win |
-| **R** | Restart |
+| Overlap the red pit | Fail |
+| **R** | Restart (also after a win or fail) |
 | **Esc** or close the window | Quit |
 
 Headless / CI smoke (a few 60 Hz **simulation** ticks, then exit). The sandbox path runs a header-only math self-check **before** SDL (clamp, Vec2 including `normalized_or_zero`, Color, Rect AABB / `aabb_overlap` / `aabb_move` / `expanded` / `contains_inclusive`, Camera including Inf zoom → 1, Transform, Entity, `TextureId`, Cooldown, CPU `make_checkerboard_rgba`, three-space mouse policy) and fails if the BMP was not copied next to the binary. `--smoke` always loads that BMP, so the checkerboard fallback is exercised only by the CPU self-check (and by an interactive run with a missing file). It does **not** require the debug HUD, does **not** print the interactive logical/window/pixel size line, and does **not** call `SDL_RenderCoordinatesFromWindow` (that converter needs a renderer and stays interactive-only):
@@ -111,7 +112,7 @@ ctest --preset debug
 # equivalent: ctest --test-dir build/debug --output-on-failure
 ```
 
-`midas_room --smoke` checks AABB + a scripted key→door win/restart, then the same dummy-video ticks. It does not need the sandbox BMP. After a build, `ctest --preset debug` (and `ctest --preset release`) run both smokes.
+`midas_room --smoke` checks AABB + a scripted key→door win (avoiding the hazard) and a walk-into-hazard fail/reset, then the same dummy-video ticks. It does not need the sandbox BMP. After a build, `ctest --preset debug` (and `ctest --preset release`) run both smokes.
 
 `MIDAS_SMOKE_FRAMES` is an alternative to `--smoke` (must be a positive integer). It counts **simulation ticks** (`on_update`), not display presents — the name is leftover from the 1:1 loop.
 
