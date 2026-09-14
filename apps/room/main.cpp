@@ -251,16 +251,94 @@ void draw_hud(midas::Renderer& renderer, const midas::room::Room& room) {
                              midas::Color::bronze());
 }
 
+/// 5×7 bitmap (`#` = fill). Used so WIN/FAIL are readable as shapes without a
+/// font atlas — `draw_debug_text` is an 8×8 SDL bitmap and easy to miss live.
+void draw_block_glyph(midas::Renderer& renderer, float ox, float oy, float cell,
+                      std::string_view bits, const midas::Color& color) {
+    constexpr int cols = 5;
+    constexpr int rows = 7;
+    if (bits.size() < static_cast<std::size_t>(cols * rows)) {
+        return;
+    }
+    const float pad = cell * 0.12f;
+    for (int row = 0; row < rows; ++row) {
+        for (int col = 0; col < cols; ++col) {
+            if (bits[static_cast<std::size_t>(row * cols + col)] != '#') {
+                continue;
+            }
+            renderer.fill_screen_rect(
+                {ox + static_cast<float>(col) * cell + pad,
+                 oy + static_cast<float>(row) * cell + pad, cell - pad * 2.0f,
+                 cell - pad * 2.0f},
+                color);
+        }
+    }
+}
+
+const char* glyph_bits(char letter) {
+    switch (letter) {
+        case 'W':
+            return "#   ##   ## # ### ### # ##   ##   #";
+        case 'I':
+            return "#####  #    #    #    #    #  #####";
+        case 'N':
+            return "#   ###  ## # ## # ## # ##  ###   #";
+        case 'F':
+            return "######    #    #### #    #    #    ";
+        case 'A':
+            return " ### #   ##   #######   ##   ##   #";
+        case 'L':
+            return "#    #    #    #    #    #    #####";
+        default:
+            return nullptr;
+    }
+}
+
+void draw_block_word(midas::Renderer& renderer, float x, float y, float cell,
+                     std::string_view word, const midas::Color& color) {
+    const float advance = cell * 5.0f + cell * 0.7f;
+    for (std::size_t i = 0; i < word.size(); ++i) {
+        if (const char* bits = glyph_bits(word[i])) {
+            draw_block_glyph(renderer, x + static_cast<float>(i) * advance, y, cell, bits,
+                             color);
+        }
+    }
+}
+
+/// Full-present stamp. Drawn every frame while `won` / `failed` so it stays
+/// until R. Block letters + bars — not the 8×8 debug bitmap.
 void draw_end_overlay(midas::Renderer& renderer, bool won) {
-    renderer.fill_screen_rect({0.0f, 0.0f, midas::room::kLogicalW, midas::room::kLogicalH},
-                              {0.0f, 0.0f, 0.0f, 0.55f});
-    const midas::Rect banner{340.0f, 250.0f, 600.0f, 180.0f};
     const midas::Color accent = won ? midas::Color::gold() : kHazardFill;
-    renderer.fill_screen_rect(banner, accent);
-    renderer.fill_screen_rect(banner.inset(10.0f), midas::Color::charcoal());
-    renderer.draw_debug_text({won ? 560.0f : 540.0f, 310.0f}, won ? "YOU WIN" : "YOU FAILED",
-                             accent);
-    renderer.draw_debug_text({500.0f, 350.0f}, "Press R to restart", midas::Color::white());
+    const midas::Color wash = won ? midas::Color{0.831f, 0.686f, 0.216f, 0.72f}
+                                  : midas::Color{0.78f, 0.16f, 0.12f, 0.72f};
+
+    renderer.fill_screen_rect({0.0f, 0.0f, midas::room::kLogicalW, midas::room::kLogicalH}, wash);
+
+    const midas::Rect frame{48.0f, 48.0f, midas::room::kLogicalW - 96.0f,
+                            midas::room::kLogicalH - 96.0f};
+    renderer.fill_screen_rect(frame, accent);
+    renderer.fill_screen_rect(frame.inset(22.0f), midas::Color::charcoal());
+
+    renderer.fill_screen_rect({48.0f, 48.0f, midas::room::kLogicalW - 96.0f, 36.0f}, accent);
+    renderer.fill_screen_rect({48.0f, midas::room::kLogicalH - 84.0f, midas::room::kLogicalW - 96.0f, 36.0f},
+                              accent);
+
+    const char* word = won ? "WIN" : "FAIL";
+    const std::size_t letters = won ? 3 : 4;
+    constexpr float cell = 36.0f;
+    const float word_w =
+        static_cast<float>(letters) * cell * 5.0f + static_cast<float>(letters - 1) * cell * 0.7f;
+    const float word_h = cell * 7.0f;
+    const float word_x = (midas::room::kLogicalW - word_w) * 0.5f;
+    const float word_y = 210.0f;
+    draw_block_word(renderer, word_x, word_y, cell, word, accent);
+
+    // Small "R" cue as bars (debug text is too small to trust live).
+    const midas::Rect restart_bar{word_x, word_y + word_h + 36.0f, word_w, 28.0f};
+    renderer.fill_screen_rect(restart_bar, accent);
+    renderer.fill_screen_rect(restart_bar.inset(6.0f), midas::Color::charcoal());
+    renderer.draw_debug_text({word_x + 8.0f, restart_bar.y + 8.0f}, "R RESTART",
+                             midas::Color::white());
 }
 
 }  // namespace
@@ -339,9 +417,11 @@ int main(int argc, char** argv) {
 
                 if (show_hud) {
                     draw_hud(renderer, room);
-                    if (room.won || room.failed) {
-                        draw_end_overlay(renderer, room.won);
-                    }
+                }
+                // Overlay is not HUD-gated: it must stay on screen every present
+                // after win/fail until R (tiny debug text alone is easy to miss).
+                if (room.won || room.failed) {
+                    draw_end_overlay(renderer, room.won);
                 }
                 renderer.present();
             });

@@ -6,6 +6,7 @@ Bullet highlights from the 2D engine fine-tunes on `main`. No 3D / ECS / editor.
 
 - `apps/room`: one stationary red AABB hazard. Overlap fails (freeze + overlay); **R** uses the existing restart path. The scripted north-corridor key→door path still wins if the pit is avoided.
 - Room `--smoke` covers hazard fail/reset in addition to the key→door win.
+- Win/fail overlays are full-present stamps (wash + frame + block letters from `fill_screen_rect`). They stay until **R**. 8×8 `draw_debug_text` is no longer the only WIN cue.
 
 ## Unreleased (AABB + room v0)
 

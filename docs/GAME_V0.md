@@ -8,7 +8,7 @@ Saul’s victory condition for this slice: **one room, player, walls, key, door,
 - Public AABB helpers: `aabb_overlap(Rect, Rect)` and `aabb_move` (axis-separated slide). The room uses both.
 - One fixed room. Walls are solid AABBs. The player moves on the floor plane with **WASD** (arrows too) and collides with walls via AABB. Collision stays axis-aligned even if later art looks isometric.
 - Key pickup (overlap) unlocks the door. The locked door is a solid; the open door is not. Overlapping the open door wins.
-- One stationary hazard (a red AABB on the floor). It is a trigger, not a wall: overlap **fails**, motion freezes, and a fail overlay asks for **R**. The north-corridor key→door path still wins if you never touch it.
+- One stationary hazard (a red AABB on the floor). It is a trigger, not a wall: overlap **fails**, motion freezes, and a fail overlay asks for **R**. The north-corridor key→door path still wins if you never touch it. Win and fail stamps are large screen-space rects (block letters), not just 8×8 debug text, and they stay until **R**.
 - **R** restarts (also after a win or fail). **Esc** / close box quits.
 - Camera is the identity logical view (no pan/zoom required).
 - Drawing: bronze wall fills, a red hazard fill, plus a 3-cell `TextureId` atlas (player / key / door). SDL stays out of public headers.
