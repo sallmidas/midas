@@ -43,6 +43,10 @@ struct Transform {
 /// `texture` is **non-owning**. The `Texture` must outlive the entity (in the
 /// sandbox: load the texture first, then fill the entity list).
 ///
+/// `source` is an optional atlas cell in texture pixel space. A non-positive
+/// size (the default) draws the whole texture; a positive `w`/`h` is forwarded
+/// to `Renderer::draw_texture` as the source rect.
+///
 /// TODO: 2D velocity / overlap resolution can wait; AABB `overlaps` is the
 /// collision starter.
 struct Entity {
@@ -50,6 +54,7 @@ struct Entity {
     Vec2 size{};
     Color color{Color::white()};
     const Texture* texture{nullptr};
+    Rect source{};
 
     [[nodiscard]] constexpr Rect bounds() const noexcept {
         return transform.to_rect(size);
@@ -70,7 +75,11 @@ inline void draw_entity(Renderer& renderer, const Entity& entity) {
         return;
     }
     if (entity.texture != nullptr) {
-        renderer.draw_texture(*entity.texture, dest, entity.color);
+        if (entity.source.w > 0.0f && entity.source.h > 0.0f) {
+            renderer.draw_texture(*entity.texture, dest, entity.source, entity.color);
+        } else {
+            renderer.draw_texture(*entity.texture, dest, entity.color);
+        }
     } else {
         renderer.fill_rect(dest, entity.color);
     }

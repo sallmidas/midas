@@ -47,9 +47,11 @@ int parse_smoke_ticks(int argc, char** argv) {
 
 /// Header-only math, before SDL so a broken Camera/Rect cannot hide behind a
 /// missing GPU. Covers the constexpr/NaN contracts on clamp, Vec2, Color, Rect,
-/// Camera, Transform, Entity, Cooldown, and CPU `make_checkerboard_rgba`.
-/// `--smoke` requires the BMP, so the checkerboard fallback would otherwise
-/// never run. `SDL_RenderCoordinatesFromWindow` stays interactive-only.
+/// Camera, Transform, Entity (including empty `source` = whole texture), Cooldown,
+/// CPU `make_checkerboard_rgba` (including a 2-cell atlas sheet), and the
+/// three-space mouse policy. `--smoke` requires the BMP, so the checkerboard
+/// fallback would otherwise never run. `SDL_RenderCoordinatesFromWindow` stays
+/// interactive-only.
 void self_check_math() {
     using midas::Camera;
     using midas::Cooldown;
@@ -473,6 +475,23 @@ void self_check_math() {
         if (with_inf_a.size() != 4 || with_inf_a[3] != 255) {
             throw std::runtime_error("Midas self-check: checkerboard Inf alpha should fall back to 1");
         }
+
+        // 2×1 atlas: cell_size == half width → left cell even/gold, right odd/bronze.
+        const auto sheet = midas::make_checkerboard_rgba(4, 2, Color::gold(), Color::bronze(), 2);
+        if (sheet.size() != 32 || sheet[0] != to_u8(Color::gold().r) ||
+            sheet[8] != to_u8(Color::bronze().r)) {
+            throw std::runtime_error("Midas self-check: 2-cell atlas checkerboard failed");
+        }
+    }
+
+    {
+        Entity whole;
+        Entity cell;
+        cell.source = {0.0f, 0.0f, 32.0f, 32.0f};
+        if (whole.source.w != 0.0f || whole.source.h != 0.0f ||
+            !(cell.source.w > 0.0f) || !(cell.source.h > 0.0f)) {
+            throw std::runtime_error("Midas self-check: Entity source default / cell rect failed");
+        }
     }
 }
 
@@ -553,13 +572,22 @@ midas::Entity make_fill(midas::Vec2 position, midas::Vec2 size, midas::Color col
 }
 
 midas::Entity make_sprite(midas::Vec2 position, midas::Vec2 size, const midas::Texture& texture,
-                          midas::Color tint) {
+                          midas::Color tint, midas::Rect source = {}) {
     midas::Entity entity;
     entity.transform.position = position;
     entity.size = size;
     entity.texture = &texture;
     entity.color = tint;
+    entity.source = source;
     return entity;
+}
+
+/// Two solid cells side by side (gold | bronze). One CPU buffer, one GPU upload.
+midas::Texture make_atlas(midas::Renderer& renderer) {
+    constexpr int cell = 32;
+    const auto pixels = midas::make_checkerboard_rgba(
+        cell * 2, cell, midas::Color::gold(), midas::Color::bronze(), cell);
+    return renderer.create_texture(cell * 2, cell, pixels);
 }
 
 struct DemoScene {
@@ -567,7 +595,8 @@ struct DemoScene {
     std::size_t plinth_index{0};
 };
 
-DemoScene build_demo_scene(const midas::Texture& sprite, float viewport_w, float viewport_h) {
+DemoScene build_demo_scene(const midas::Texture& sprite, const midas::Texture& atlas,
+                           float viewport_w, float viewport_h) {
     // World origin is the top-left of the default view. The camera starts at the
     // viewport center, so this layout is what you see before WASD/zoom.
     const midas::Vec2 center{viewport_w * 0.5f, viewport_h * 0.5f};
@@ -601,6 +630,18 @@ DemoScene build_demo_scene(const midas::Texture& sprite, float viewport_w, float
     midas::Entity small = make_sprite({0.0f, 0.0f}, {sprite_px, sprite_px}, sprite, midas::Color::white());
     small.transform = parent.then(local);
     scene.push_back(small);
+
+    // Sprite atlas: two source rects from one texture (gold cell | bronze cell).
+    constexpr float atlas_cell = 32.0f;
+    constexpr float atlas_dest = 64.0f;
+    constexpr float atlas_gap = 12.0f;
+    const float atlas_y = center.y + 140.0f;
+    const float atlas_x = center.x - atlas_dest - atlas_gap * 0.5f;
+    scene.push_back(make_sprite({atlas_x, atlas_y}, {atlas_dest, atlas_dest}, atlas,
+                                midas::Color::white(), {0.0f, 0.0f, atlas_cell, atlas_cell}));
+    scene.push_back(make_sprite({atlas_x + atlas_dest + atlas_gap, atlas_y}, {atlas_dest, atlas_dest},
+                                atlas, midas::Color::white(),
+                                {atlas_cell, 0.0f, atlas_cell, atlas_cell}));
 
     // Distant markers so zooming out / panning has something to find.
     scene.push_back(make_fill({64.0f, 64.0f}, {36.0f, 36.0f}, midas::Color::gold()));
@@ -747,8 +788,12 @@ int main(int argc, char** argv) {
                       << " from " << sprite.path.string() << '\n';
         }
 
+        midas::Texture atlas = make_atlas(engine.renderer());
+        std::cerr << "Midas: atlas " << atlas.width() << "x" << atlas.height()
+                  << " (2 cells, one upload)\n";
+
         const midas::Vec2 viewport = engine.renderer().logical_size();
-        DemoScene scene = build_demo_scene(sprite.texture, viewport.x, viewport.y);
+        DemoScene scene = build_demo_scene(sprite.texture, atlas, viewport.x, viewport.y);
 
         // Identity logical view (center, zoom 1). Camera{} would be origin, not this.
         midas::Camera camera = engine.renderer().camera();
@@ -802,7 +847,8 @@ int main(int argc, char** argv) {
 
         if (smoke_ticks > 0) {
             std::cerr << "Midas: smoke completed " << smoke_ticks << " ticks (" << scene.entities.size()
-                      << " entities, math self-check ok)\n";
+                      << " entities, atlas " << atlas.width() << "x" << atlas.height()
+                      << " 2 cells, math self-check ok)\n";
         }
         return status;
     } catch (const std::exception& ex) {

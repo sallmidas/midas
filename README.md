@@ -1,6 +1,6 @@
 # Midas
 
-Midas is a C++20 game engine. The public API covers a window, input, a fixed 60 Hz loop, a 2D renderer with textures and an orthographic camera, and lightweight entity/transform helpers. The sandbox draws a small gold-and-bronze scene (solid fills, a BMP sprite, a tinted sprite, and a scaled child) that you can pan and zoom. When the HUD is on it includes a one-line WASD/zoom/F1 legend; press **F1** or **`** to hide it for recordings.
+Midas is a C++20 game engine. The public API covers a window, input, a fixed 60 Hz loop, a 2D renderer with textures (including sprite-sheet source rects) and an orthographic camera, and lightweight entity/transform helpers. The sandbox draws a small gold-and-bronze scene (solid fills, a BMP sprite, a tinted sprite, a scaled child, and two atlas cells from one uploaded sheet) that you can pan and zoom. When the HUD is on it includes a one-line WASD/zoom/F1 legend; press **F1** or **`** to hide it for recordings.
 
 ## Layout
 

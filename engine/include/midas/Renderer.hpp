@@ -15,10 +15,11 @@ class Window;
 
 /// 2D present path: clear, fill an axis-aligned rect, draw a textured quad, present.
 ///
-/// `fill_rect` and `draw_texture` take **world** rectangles and share one
+/// `fill_rect` and `draw_texture` take **world** dest rectangles and share one
 /// projection (`Camera::project`), so a solid and a tinted sprite of the same
 /// world rect stay the same size and position at any zoom. Tint is a per-texel
-/// multiply — it does not depend on dest size.
+/// multiply — it does not depend on dest size. An optional **source** `Rect` is
+/// in texture pixel space (atlas cell); omit it to draw the whole texture.
 ///
 /// Drawing happens in **logical present pixels** (`logical_width` ×
 /// `logical_height`, captured from `EngineConfig`). That is not live
@@ -39,7 +40,16 @@ public:
 
     void clear(const Color& color);
     void fill_rect(const Rect& rect, const Color& color);
+    /// Textured quad. `dest` is world space (camera-projected). The whole
+    /// texture is sampled. Tint is a per-texel multiply (default white).
     void draw_texture(const Texture& texture, const Rect& dest,
+                      const Color& tint = Color::white());
+    /// Same as the three-argument draw, but `src` is a rectangle in **texture
+    /// pixel space** (top-left origin, same units as `Texture::width/height`).
+    /// Use this for sprite-sheet cells: one GPU upload, many draws. An empty
+    /// `src` (`{}`) samples the whole texture. Any other non-finite or
+    /// non-positive `src` is skipped (same drawable rule as dest).
+    void draw_texture(const Texture& texture, const Rect& dest, const Rect& src,
                       const Color& tint = Color::white());
 
     /// Axis-aligned fill in **logical present pixels** (ignores the camera).

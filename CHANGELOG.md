@@ -2,6 +2,13 @@
 
 Bullet highlights from the 2D engine fine-tunes on `main`. No 3D / ECS / editor.
 
+## Unreleased (sprite atlas)
+
+- `Renderer::draw_texture` accepts a texture-space source `Rect` (atlas cell) in addition to the world dest and optional tint. The existing three-argument call still draws the whole texture (`src == {}` → SDL `nullptr`).
+- `Entity::source` is an optional cell rect; empty / non-positive size keeps full-texture draws. `draw_entity` forwards a positive source to the new overload.
+- Sandbox uploads one 64×32 two-cell sheet (`make_checkerboard_rgba` + `create_texture`) and draws the gold cell and the bronze cell side by side.
+- Docs: ARCHITECTURE / README / BUILDING note source rects and the two-cell sandbox demo.
+
 ## Unreleased (pass 15)
 
 - CHANGELOG records pass 14 as landed on `main`.
