@@ -1,18 +1,18 @@
 #include <midas/Renderer.hpp>
 #include <midas/Window.hpp>
 
-#include "internal/GpuLifetime.hpp"
 #include "internal/RendererNative.hpp"
 #include "internal/Sdl.hpp"
 #include "internal/WindowNative.hpp"
 
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
-#include <memory>
 #include <stdexcept>
 #include <string>
 #include <system_error>
+#include <vector>
 
 namespace midas {
 namespace {
@@ -47,17 +47,45 @@ void set_draw_color(SDL_Renderer* renderer, const Color& color) {
 
 }  // namespace
 
+struct TextureSlot {
+    SDL_Texture* native{nullptr};
+    int width{0};
+    int height{0};
+    std::uint32_t generation{0};
+};
+
+namespace {
+
+const TextureSlot* find_slot(const std::vector<TextureSlot>& textures, TextureId id) noexcept {
+    if (!id.valid() || id.index >= textures.size()) {
+        return nullptr;
+    }
+    const TextureSlot& slot = textures[id.index];
+    if (slot.generation != id.generation || slot.native == nullptr) {
+        return nullptr;
+    }
+    return &slot;
+}
+
+}  // namespace
+
 struct Renderer::Impl {
     Native native;
     Camera camera{};
     int logical_width{0};
     int logical_height{0};
-    std::shared_ptr<detail::GpuLifetime> gpu{std::make_shared<detail::GpuLifetime>()};
+    std::vector<TextureSlot> textures;
 
     // RAII: constructor failures after SDL_CreateRenderer take this path too
     // (C++ does not run ~Renderer() when the constructor throws).
     ~Impl() {
-        gpu->alive = false;
+        for (TextureSlot& slot : textures) {
+            if (slot.native != nullptr) {
+                SDL_DestroyTexture(slot.native);
+                slot.native = nullptr;
+            }
+        }
+        textures.clear();
         if (native.renderer != nullptr) {
             SDL_DestroyRenderer(native.renderer);
             native.renderer = nullptr;
@@ -139,16 +167,17 @@ void Renderer::fill_rect(const Rect& rect, const Color& color) {
     }
 }
 
-void Renderer::draw_texture(const Texture& texture, const Rect& dest, const Color& tint) {
+void Renderer::draw_texture(TextureId texture, const Rect& dest, const Color& tint) {
     draw_texture(texture, dest, Rect{}, tint);
 }
 
-void Renderer::draw_texture(const Texture& texture, const Rect& dest, const Rect& src,
+void Renderer::draw_texture(TextureId texture, const Rect& dest, const Rect& src,
                             const Color& tint) {
-    auto* native_texture = static_cast<SDL_Texture*>(texture.native_texture());
-    if (native_texture == nullptr) {
-        throw std::runtime_error("Midas draw_texture requires a valid texture");
+    const TextureSlot* slot = find_slot(impl_->textures, texture);
+    if (slot == nullptr) {
+        return;
     }
+    SDL_Texture* native_texture = slot->native;
 
     const Rect screen = project_world(dest);
     if (!is_drawable_rect(screen)) {
@@ -217,7 +246,38 @@ void Renderer::present() {
     }
 }
 
-Texture Renderer::create_texture(int width, int height, std::span<const std::uint8_t> rgba) {
+TextureId Renderer::store_texture(void* native_texture, int width, int height) {
+    auto* native = static_cast<SDL_Texture*>(native_texture);
+    if (native == nullptr) {
+        throw std::runtime_error("Midas texture requires a native handle");
+    }
+
+    // Nearest-neighbor: one texel → one (or many) pixels. Linear would blur
+    // pixel art the moment the camera zoom is not 1.
+    if (!SDL_SetTextureBlendMode(native, SDL_BLENDMODE_BLEND)) {
+        SDL_DestroyTexture(native);
+        detail::throw_sdl("SDL_SetTextureBlendMode failed");
+    }
+    if (!SDL_SetTextureScaleMode(native, SDL_SCALEMODE_NEAREST)) {
+        SDL_DestroyTexture(native);
+        detail::throw_sdl("SDL_SetTextureScaleMode failed");
+    }
+
+    TextureSlot slot;
+    slot.native = native;
+    slot.width = width;
+    slot.height = height;
+    slot.generation = 1;
+    try {
+        impl_->textures.push_back(slot);
+    } catch (...) {
+        SDL_DestroyTexture(native);
+        throw;
+    }
+    return TextureId{static_cast<std::uint32_t>(impl_->textures.size() - 1), slot.generation};
+}
+
+TextureId Renderer::create_texture(int width, int height, std::span<const std::uint8_t> rgba) {
     if (width <= 0 || height <= 0) {
         throw std::runtime_error("Midas texture size must be positive");
     }
@@ -245,10 +305,10 @@ Texture Renderer::create_texture(int width, int height, std::span<const std::uin
         detail::throw_sdl("SDL_UpdateTexture failed");
     }
 
-    return Texture{native, width, height, impl_->gpu};
+    return store_texture(native, width, height);
 }
 
-Texture Renderer::load_bmp(std::string_view path) {
+TextureId Renderer::load_bmp(std::string_view path) {
     if (path.empty()) {
         throw std::runtime_error("Midas load_bmp requires a path");
     }
@@ -283,7 +343,21 @@ Texture Renderer::load_bmp(std::string_view path) {
         detail::throw_sdl("SDL_CreateTextureFromSurface failed (" + path_str + ")");
     }
 
-    return Texture{native, width, height, impl_->gpu};
+    return store_texture(native, width, height);
+}
+
+bool Renderer::texture_valid(TextureId id) const noexcept {
+    return impl_ && find_slot(impl_->textures, id) != nullptr;
+}
+
+int Renderer::texture_width(TextureId id) const noexcept {
+    const TextureSlot* slot = impl_ ? find_slot(impl_->textures, id) : nullptr;
+    return slot != nullptr ? slot->width : 0;
+}
+
+int Renderer::texture_height(TextureId id) const noexcept {
+    const TextureSlot* slot = impl_ ? find_slot(impl_->textures, id) : nullptr;
+    return slot != nullptr ? slot->height : 0;
 }
 
 void Renderer::set_camera(const Camera& camera) noexcept {

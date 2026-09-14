@@ -49,7 +49,8 @@ int parse_smoke_ticks(int argc, char** argv) {
 
 /// Header-only math, before SDL so a broken Camera/Rect cannot hide behind a
 /// missing GPU. Covers the constexpr/NaN contracts on clamp, Vec2, Color, Rect,
-/// Camera, Transform, Entity (including empty `source` = whole texture), Cooldown,
+/// Camera, Transform, Entity (including empty `source` = whole texture and
+/// default `TextureId{}` = solid fill), Cooldown,
 /// CPU `make_checkerboard_rgba` (including a 2-cell atlas sheet), and the
 /// three-space mouse policy. `--smoke` requires the BMP, so the checkerboard
 /// fallback would otherwise never run. `SDL_RenderCoordinatesFromWindow` stays
@@ -489,6 +490,23 @@ void self_check_math() {
     }
 
     {
+        using midas::TextureId;
+        const TextureId none{};
+        const TextureId minted{0, 1};
+        const TextureId stale{99, 1};
+        if (none.valid() || static_cast<bool>(none) || !minted.valid() || !stale.valid() ||
+            none == minted || minted == stale || !(none == TextureId{})) {
+            throw std::runtime_error("Midas self-check: TextureId default / equality failed");
+        }
+        Entity fill;
+        Entity sprite;
+        sprite.texture = minted;
+        if (fill.texture.valid() || fill.texture != TextureId{} || !sprite.texture.valid()) {
+            throw std::runtime_error("Midas self-check: Entity default texture should be invalid");
+        }
+    }
+
+    {
         Entity whole;
         Entity cell;
         cell.source = {0.0f, 0.0f, 32.0f, 32.0f};
@@ -535,7 +553,7 @@ std::optional<std::filesystem::path> find_asset(const std::filesystem::path& exe
 }
 
 struct LoadedSprite {
-    midas::Texture texture;
+    midas::TextureId id{};
     bool from_bmp{false};
     std::filesystem::path path;
 };
@@ -546,8 +564,8 @@ LoadedSprite load_sprite(midas::Engine& engine, const char* argv0, bool smoke) {
 
     if (const auto path =
             find_asset(engine.executable_directory(), argv0, "midas_sprite.bmp", smoke)) {
-        midas::Texture texture = renderer.load_bmp(path->string());
-        return LoadedSprite{std::move(texture), true, *path};
+        midas::TextureId id = renderer.load_bmp(path->string());
+        return LoadedSprite{id, true, *path};
     }
 
     if (smoke) {
@@ -575,19 +593,19 @@ midas::Entity make_fill(midas::Vec2 position, midas::Vec2 size, midas::Color col
     return entity;
 }
 
-midas::Entity make_sprite(midas::Vec2 position, midas::Vec2 size, const midas::Texture& texture,
+midas::Entity make_sprite(midas::Vec2 position, midas::Vec2 size, midas::TextureId texture,
                           midas::Color tint, midas::Rect source = {}) {
     midas::Entity entity;
     entity.transform.position = position;
     entity.size = size;
-    entity.texture = &texture;
+    entity.texture = texture;
     entity.color = tint;
     entity.source = source;
     return entity;
 }
 
 /// Two solid cells side by side (gold | bronze). One CPU buffer, one GPU upload.
-midas::Texture make_atlas(midas::Renderer& renderer) {
+midas::TextureId make_atlas(midas::Renderer& renderer) {
     constexpr int cell = 32;
     const auto pixels = midas::make_checkerboard_rgba(
         cell * 2, cell, midas::Color::gold(), midas::Color::bronze(), cell);
@@ -599,8 +617,8 @@ struct DemoScene {
     std::size_t plinth_index{0};
 };
 
-DemoScene build_demo_scene(const midas::Texture& sprite, const midas::Texture& atlas,
-                           float viewport_w, float viewport_h) {
+DemoScene build_demo_scene(midas::TextureId sprite, midas::TextureId atlas, float viewport_w,
+                           float viewport_h) {
     // World origin is the top-left of the default view. The camera starts at the
     // viewport center, so this layout is what you see before WASD/zoom.
     const midas::Vec2 center{viewport_w * 0.5f, viewport_h * 0.5f};
@@ -782,22 +800,36 @@ int main(int argc, char** argv) {
         config.height = static_cast<int>(kViewportH);
         config.max_ticks = smoke_ticks;
 
-        // Engine first, then GPU textures: C++ destroys in reverse, which is
-        // the SDL order (texture → renderer → window → SDL_Quit).
+        // Renderer owns GPU textures; TextureId copies are valid until Engine dies.
         midas::Engine engine{std::move(config)};
 
         LoadedSprite sprite = load_sprite(engine, argc > 0 ? argv[0] : nullptr, smoke_ticks > 0);
+        auto& renderer = engine.renderer();
         if (sprite.from_bmp) {
-            std::cerr << "Midas: loaded BMP " << sprite.texture.width() << "x" << sprite.texture.height()
-                      << " from " << sprite.path.string() << '\n';
+            std::cerr << "Midas: loaded BMP " << renderer.texture_width(sprite.id) << "x"
+                      << renderer.texture_height(sprite.id) << " from " << sprite.path.string()
+                      << '\n';
         }
 
-        midas::Texture atlas = make_atlas(engine.renderer());
-        std::cerr << "Midas: atlas " << atlas.width() << "x" << atlas.height()
-                  << " (2 cells, one upload)\n";
+        midas::TextureId atlas = make_atlas(renderer);
+        std::cerr << "Midas: atlas " << renderer.texture_width(atlas) << "x"
+                  << renderer.texture_height(atlas) << " (2 cells, one upload)\n";
 
-        const midas::Vec2 viewport = engine.renderer().logical_size();
-        DemoScene scene = build_demo_scene(sprite.texture, atlas, viewport.x, viewport.y);
+        if (smoke_ticks > 0) {
+            if (!renderer.texture_valid(sprite.id) || !renderer.texture_valid(atlas) ||
+                renderer.texture_width(atlas) != 64 || renderer.texture_height(atlas) != 32 ||
+                renderer.texture_width(midas::TextureId{}) != 0 ||
+                renderer.texture_valid(midas::TextureId{99, 1})) {
+                throw std::runtime_error("Midas self-check: TextureId registry / atlas size failed");
+            }
+            // Invalid / stale handles skip — they must not throw or crash.
+            renderer.draw_texture(midas::TextureId{}, {10.0f, 10.0f, 8.0f, 8.0f});
+            renderer.draw_texture(midas::TextureId{99, 1}, {10.0f, 10.0f, 8.0f, 8.0f},
+                                  {0.0f, 0.0f, 32.0f, 32.0f});
+        }
+
+        const midas::Vec2 viewport = renderer.logical_size();
+        DemoScene scene = build_demo_scene(sprite.id, atlas, viewport.x, viewport.y);
 
         // Identity logical view (center, zoom 1). Camera{} would be origin, not this.
         midas::Camera camera = engine.renderer().camera();
@@ -808,7 +840,6 @@ int main(int argc, char** argv) {
         if (show_hud) {
             std::cerr << "Midas: F1 or ` toggles the debug HUD\n";
             const auto& window = engine.window();
-            const auto& renderer = engine.renderer();
             std::cerr << "Midas: logical " << renderer.logical_width() << "x"
                       << renderer.logical_height() << "  window " << window.width() << "x"
                       << window.height() << "  pixels " << window.pixel_width() << "x"
@@ -854,7 +885,8 @@ int main(int argc, char** argv) {
         if (smoke_ticks > 0) {
             std::cerr << "Midas: smoke completed " << smoke_ticks << " simulation ticks ("
                       << scene.entities.size()
-                      << " entities, atlas " << atlas.width() << "x" << atlas.height()
+                      << " entities, atlas " << engine.renderer().texture_width(atlas) << "x"
+                      << engine.renderer().texture_height(atlas)
                       << " 2 cells, math self-check ok)\n";
         }
         return status;

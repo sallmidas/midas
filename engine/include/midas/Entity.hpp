@@ -40,8 +40,10 @@ struct Transform {
 /// or a texture (tinted by `color`). This is not an ECS — just a bag of data
 /// the sandbox (or a tiny game) can keep in an array.
 ///
-/// `texture` is **non-owning**. The `Texture` must outlive the entity (in the
-/// sandbox: load the texture first, then fill the entity list).
+/// `texture` is a **handle**, not an owning pointer. The `Renderer` owns the
+/// GPU image. Default `TextureId{}` (invalid) draws a solid fill. A stale id
+/// (renderer gone, or a minted-looking index the registry does not have) is
+/// skipped by `draw_texture` — no crash, and not a fill fallback.
 ///
 /// `source` is an optional atlas cell in texture pixel space. A non-positive
 /// size (the default) draws the whole texture; a positive `w`/`h` is forwarded
@@ -53,7 +55,7 @@ struct Entity {
     Transform transform;
     Vec2 size{};
     Color color{Color::white()};
-    const Texture* texture{nullptr};
+    TextureId texture{};
     Rect source{};
 
     [[nodiscard]] constexpr Rect bounds() const noexcept {
@@ -65,20 +67,21 @@ struct Entity {
     }
 };
 
-/// World-space draw: textured quad if `texture` is set, else a solid fill.
-/// Skips a non-finite or non-positive dest (NaN size or negative scale is not
-/// supported yet — same drawable rule as `Renderer::fill_rect`).
+/// World-space draw: textured quad if `texture` is a minted handle, else a
+/// solid fill. Skips a non-finite or non-positive dest (NaN size or negative
+/// scale is not supported yet — same drawable rule as `Renderer::fill_rect`).
+/// A stale handle still takes the textured path and no-ops inside the renderer.
 inline void draw_entity(Renderer& renderer, const Entity& entity) {
     const Rect dest = entity.bounds();
     if (!std::isfinite(dest.x) || !std::isfinite(dest.y) || !std::isfinite(dest.w) ||
         !std::isfinite(dest.h) || dest.w <= 0.0f || dest.h <= 0.0f) {
         return;
     }
-    if (entity.texture != nullptr) {
+    if (entity.texture.valid()) {
         if (entity.source.w > 0.0f && entity.source.h > 0.0f) {
-            renderer.draw_texture(*entity.texture, dest, entity.source, entity.color);
+            renderer.draw_texture(entity.texture, dest, entity.source, entity.color);
         } else {
-            renderer.draw_texture(*entity.texture, dest, entity.color);
+            renderer.draw_texture(entity.texture, dest, entity.color);
         }
     } else {
         renderer.fill_rect(dest, entity.color);

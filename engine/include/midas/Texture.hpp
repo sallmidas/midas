@@ -3,47 +3,31 @@
 #include <midas/Types.hpp>
 
 #include <cstdint>
-#include <memory>
 #include <vector>
 
 namespace midas {
 
-class Renderer;
-
-/// GPU texture uploaded from CPU pixels or a BMP file.
+/// Opaque handle to a GPU texture owned by `Renderer`.
 ///
-/// Sampling is nearest-neighbor (`SDL_SCALEMODE_NEAREST`) so pixel-art sprites
-/// stay sharp when the camera zooms. Linear filtering is a later, opt-in layer.
-/// Draw one cell of a sheet with `Renderer::draw_texture(..., src)` — `src` is
-/// in texture pixels; the GPU image is not re-uploaded per cell.
+/// Copy it freely — it does not own the image. `create_texture` / `load_bmp`
+/// mint ids; `draw_texture` looks them up. Default `{0, 0}` is invalid
+/// (`generation == 0`): an `Entity` with that id is a solid fill, and
+/// `draw_texture` skips (no crash).
 ///
-/// **Lifetime:** destroy the texture before the `Renderer` that created it
-/// (declare `Engine` first, then the `Texture`, so the texture dies first).
-/// SDL frees leftover GPU textures with the renderer. A `Texture` destructor
-/// after that skips `SDL_DestroyTexture` so reversed teardown cannot UAF.
-/// Move-assignment is RAII-safe (the old GPU texture is released).
-class Texture {
-public:
-    Texture(const Texture&) = delete;
-    Texture& operator=(const Texture&) = delete;
-    Texture(Texture&& other) noexcept;
-    Texture& operator=(Texture&& other) noexcept;
-    ~Texture();
+/// **Lifetime:** destroying the `Renderer` / `Engine` that issued an id
+/// invalidates it. A stale index/generation pair also skips the draw. Ids
+/// are not valid on a different renderer. Sampling is nearest-neighbor
+/// (`SDL_SCALEMODE_NEAREST`); draw one cell of a sheet with
+/// `Renderer::draw_texture(..., src)` — `src` is in texture pixels; the GPU
+/// image is not re-uploaded per cell.
+struct TextureId {
+    std::uint32_t index{0};
+    std::uint32_t generation{0};
 
-    [[nodiscard]] int width() const noexcept;
-    [[nodiscard]] int height() const noexcept;
-    /// False if moved-from (the GPU handle lives in the destination texture).
-    [[nodiscard]] bool valid() const noexcept;
+    [[nodiscard]] constexpr bool valid() const noexcept { return generation != 0; }
+    [[nodiscard]] constexpr explicit operator bool() const noexcept { return valid(); }
 
-private:
-    friend class Renderer;
-
-    Texture(void* native_texture, int width, int height, std::shared_ptr<void> gpu_lifetime);
-
-    [[nodiscard]] void* native_texture() const noexcept;
-
-    struct Impl;
-    std::unique_ptr<Impl> impl_;
+    [[nodiscard]] friend constexpr bool operator==(TextureId, TextureId) noexcept = default;
 };
 
 /// Tightly packed RGBA8, row-major, 4 bytes per pixel. `cell_size` is the

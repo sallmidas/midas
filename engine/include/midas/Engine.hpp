@@ -30,11 +30,10 @@ struct EngineConfig {
 /// (or press Esc in the sandbox) to stop.
 ///
 /// **Shutdown** (C++ destroys members in reverse declaration order):
-/// `Renderer` then `Window` then `SDL_Quit`. Destroy game `Texture`s before
-/// this `Engine`. If a texture outlives the renderer, its destructor is a
-/// no-op on the GPU handle (the renderer shares a small alive-flag; each
-/// `Texture` holds a `shared_ptr` to that flag). The private constructor
-/// takes `shared_ptr<void>` so `Texture.hpp` does not name the internal type.
+/// `Renderer` (GPU textures it owns, then `SDL_DestroyRenderer`) then `Window`
+/// then `SDL_Quit`. Games hold `TextureId` copies, not owning texture pointers.
+/// Destroying this `Engine` invalidates every id the renderer issued.
+/// `draw_texture` / `draw_entity` skip an invalid or stale id (no crash).
 ///
 /// TODO: 2D audio (SDL3 audio device) is a later module; this loop is still
 /// video + input.
@@ -76,7 +75,7 @@ public:
     /// when ahead of 60 Hz (dummy video has no vsync). Stops on `request_quit`,
     /// close box, or `EngineConfig::max_ticks` (simulation ticks).
     ///
-    /// Construction of `Engine` / textures may throw. Callbacks must not: an
+    /// Construction of `Engine` / `create_texture` / `load_bmp` may throw. Callbacks must not: an
     /// in-tick load failure should skip or return an error, not unwind `run()`.
     /// Returns 0 on a normal exit (an SDL pump/present failure still throws).
     int run(std::function<void(Engine&)> on_update, std::function<void(Engine&)> on_present);

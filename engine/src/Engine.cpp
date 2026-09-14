@@ -41,9 +41,9 @@ struct Engine::Impl {
     EngineConfig config;
     bool running{false};
     std::uint64_t accumulator_ns{0};
-    // Construct: SDL → Window → Renderer. Destroy (reverse): Renderer →
-    // Window → SDL_Quit. Drop game Textures before Engine; leftover Texture
-    // dtors no-op after Renderer clears GpuLifetime::alive.
+    // Construct: SDL → Window → Renderer. Destroy (reverse): Renderer
+    // (owned GPU textures, then SDL_DestroyRenderer) → Window → SDL_Quit.
+    // Games hold TextureId copies; those ids are invalid after this Engine.
     SdlVideo sdl;
     Window window;
     Renderer renderer;
