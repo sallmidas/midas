@@ -278,7 +278,8 @@ void draw_block_glyph(midas::Renderer& renderer, float ox, float oy, float cell,
 const char* glyph_bits(char letter) {
     switch (letter) {
         case 'W':
-            return "#   ##   ## # ### ### # ##   ##   #";
+            // Join sits low so this reads as W, not M.
+            return "#   ##   ##   ## # ## # ### ###   #";
         case 'I':
             return "#####  #    #    #    #    #  #####";
         case 'N':
