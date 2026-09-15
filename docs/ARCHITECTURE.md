@@ -8,7 +8,7 @@ Midas is split into a static engine library, a sandbox tech gym, and a v0 room g
 | --- | --- | --- |
 | `midas` | `engine/` | Core library (`midas::midas`) |
 | `midas_sandbox` | `apps/sandbox/` | Tech gym: camera, sprites, atlas, HUD |
-| `midas_room` | `apps/room/` | v0 game: one room, WASD, key, door |
+| `midas_room` | `apps/room/` | v0 game: one room, WASD, key, door, hazard |
 
 `ctest` in the build tree runs `midas_sandbox --smoke` and `midas_room --smoke` with `SDL_VIDEODRIVER=dummy`. Game v0 scope is in [GAME_V0.md](GAME_V0.md).
 
@@ -208,7 +208,7 @@ The sandbox locates `assets/midas_sprite.bmp` via `Engine::executable_directory(
 
 `Rect` is the 2D AABB (`x, y, w, h` with top-left origin). `contains` is half-open (`[x, x+w) × [y, y+h)`). `overlaps` / `aabb_overlap` use the same edges, so rectangles that only share a boundary do not overlap, and a zero-size rect is empty. `aabb_move` tries X then Y against a span of solids so a body can slide along a wall. `contains_inclusive` is closed (`[x, x+w] × [y, y+h]`) for letterbox present bounds. `expanded(amount)` / `inset(amount)` grow or shrink every edge; a large inset can yield a non-positive size (empty). `Entity::overlaps` calls `aabb_overlap` on the two bounds. Width/height should stay non-negative.
 
-The v0 room app (`midas_room`) is the first game on this API: walls are solids, the locked door is a solid, key pickup is overlap, and overlapping the open door wins. See [GAME_V0.md](GAME_V0.md).
+The v0 room app (`midas_room`) is the first game on this API: walls are solids, the locked door is a solid, key pickup is overlap, overlapping the open door wins, and overlapping a stationary hazard fail AABB restarts via **R**. See [GAME_V0.md](GAME_V0.md).
 
 `Color::lerp(a, b, t)` is the 0–1 mix used by the sandbox plinth (gold toward bronze). `t` is `clamp01`'d (NaN / negative → 0; Inf / above 1 → 1). `clamp` / `clamp01` are the NaN-safe float helpers (`std::clamp` is undefined when `lo > hi`). `Vec2::normalized_or_zero` is the unit vector used for WASD pan (zero / NaN / Inf → `{0,0}`). `Cooldown` is remaining-seconds until `ready()`; tick it with the fixed `delta_seconds()` step. Non-finite `remaining` is expired (`ready()`, and `tick` snaps it to 0).
 
