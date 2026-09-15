@@ -2,12 +2,14 @@
 
 #include <midas/midas.hpp>
 
+#include <algorithm>
 #include <cmath>
-#include <cstdint>
 #include <cstdlib>
 #include <exception>
+#include <filesystem>
 #include <iostream>
 #include <limits>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -18,7 +20,23 @@ namespace {
 
 constexpr int kSmokeTicks = 3;
 constexpr int kAtlasCell = 32;
+constexpr int kAtlasCols = 6;
 constexpr midas::Color kHazardFill{0.78f, 0.16f, 0.12f, 1.0f};
+constexpr midas::Color kPlayerFill = midas::Color::gold();
+constexpr midas::Color kKeyFill{0.95f, 0.88f, 0.40f, 1.0f};
+
+constexpr midas::Rect atlas_cell(int index) noexcept {
+    return {static_cast<float>(kAtlasCell * index), 0.0f, static_cast<float>(kAtlasCell),
+            static_cast<float>(kAtlasCell)};
+}
+
+// Jim's 192×32 sheet, left → right: player, wall, key, door shut, door open, pit.
+constexpr midas::Rect kPlayerCell = atlas_cell(0);
+constexpr midas::Rect kWallCell = atlas_cell(1);
+constexpr midas::Rect kKeyCell = atlas_cell(2);
+constexpr midas::Rect kDoorShutCell = atlas_cell(3);
+constexpr midas::Rect kDoorOpenCell = atlas_cell(4);
+constexpr midas::Rect kPitCell = atlas_cell(5);
 
 int parse_smoke_ticks(int argc, char** argv) {
     for (int i = 1; i < argc; ++i) {
@@ -186,33 +204,112 @@ void self_check_room() {
     }
 }
 
-midas::TextureId make_actor_atlas(midas::Renderer& renderer) {
-    constexpr int cols = 3;
-    const int width = kAtlasCell * cols;
-    const midas::Color colors[cols] = {
-        midas::Color::gold(),
-        {0.95f, 0.88f, 0.40f, 1.0f},
-        midas::Color::bronze(),
-    };
+void add_candidate(std::vector<std::filesystem::path>& candidates, std::filesystem::path path) {
+    if (path.empty()) {
+        return;
+    }
+    candidates.push_back(std::move(path));
+}
 
-    std::vector<std::uint8_t> pixels(static_cast<std::size_t>(width * kAtlasCell * 4));
-    const auto to_u8 = [](float channel) -> std::uint8_t {
-        return static_cast<std::uint8_t>(midas::clamp01(channel) * 255.0f + 0.5f);
-    };
-    for (int cell = 0; cell < cols; ++cell) {
-        const midas::Color color = colors[cell];
-        for (int y = 0; y < kAtlasCell; ++y) {
-            for (int x = 0; x < kAtlasCell; ++x) {
-                const std::size_t i =
-                    static_cast<std::size_t>((y * width) + (cell * kAtlasCell + x)) * 4;
-                pixels[i + 0] = to_u8(color.r);
-                pixels[i + 1] = to_u8(color.g);
-                pixels[i + 2] = to_u8(color.b);
-                pixels[i + 3] = to_u8(color.a);
-            }
+std::optional<std::filesystem::path> find_room_atlas(const std::filesystem::path& exe_dir,
+                                                     const char* argv0, bool next_to_binary_only) {
+    std::vector<std::filesystem::path> candidates;
+    add_candidate(candidates, exe_dir / "assets" / "room_atlas.bmp");
+
+    if (argv0 != nullptr && argv0[0] != '\0') {
+        add_candidate(candidates, std::filesystem::path(argv0).parent_path() / "assets" /
+                                      "room_atlas.bmp");
+    }
+
+    if (!next_to_binary_only) {
+        std::error_code cwd_ec;
+        const auto cwd = std::filesystem::current_path(cwd_ec);
+        if (!cwd_ec) {
+            add_candidate(candidates, cwd / "assets" / "room_atlas.bmp");
+            add_candidate(candidates, cwd / "apps" / "room" / "assets" / "room_atlas.bmp");
         }
     }
-    return renderer.create_texture(width, kAtlasCell, pixels);
+
+    for (const auto& candidate : candidates) {
+        std::error_code ec;
+        if (std::filesystem::is_regular_file(candidate, ec)) {
+            return std::filesystem::weakly_canonical(candidate, ec);
+        }
+    }
+    return std::nullopt;
+}
+
+struct LoadedAtlas {
+    midas::TextureId id{};
+    bool from_bmp{false};
+};
+
+/// Jim's sheet via `load_bmp`. Missing or unloadable BMP → invalid id; draws
+/// stay solid rects (Saul). `--smoke` only looks next to the binary so a
+/// broken CMake copy is visible, but it still must not fail the run.
+LoadedAtlas load_room_atlas(midas::Engine& engine, const char* argv0, bool smoke) {
+    auto& renderer = engine.renderer();
+    const auto path = find_room_atlas(engine.executable_directory(), argv0, smoke);
+    if (!path) {
+        std::cerr << "Midas room: missing assets/room_atlas.bmp; using solid rects\n"
+                  << "  looked in " << (engine.executable_directory() / "assets").string();
+        if (!smoke) {
+            std::cerr << ", argv0, ./assets, and ./apps/room/assets";
+        }
+        std::cerr << '\n';
+        return {};
+    }
+
+    try {
+        const midas::TextureId id = renderer.load_bmp(path->string());
+        const int width = renderer.texture_width(id);
+        const int height = renderer.texture_height(id);
+        if (!renderer.texture_valid(id) || width != kAtlasCell * kAtlasCols ||
+            height != kAtlasCell) {
+            std::cerr << "Midas room: " << path->string() << " is " << width << "x" << height
+                      << " (expected " << (kAtlasCell * kAtlasCols) << "x" << kAtlasCell
+                      << "); using solid rects\n";
+            return {};
+        }
+        return {id, true};
+    } catch (const std::exception& ex) {
+        std::cerr << "Midas room: failed to load " << path->string() << " (" << ex.what()
+                  << "); using solid rects\n";
+        return {};
+    }
+}
+
+void draw_sprite_or_fill(midas::Renderer& renderer, midas::TextureId atlas, bool use_atlas,
+                         const midas::Rect& dest, const midas::Rect& src,
+                         const midas::Color& fill) {
+    if (use_atlas) {
+        renderer.draw_texture(atlas, dest, src);
+    } else {
+        renderer.fill_rect(dest, fill);
+    }
+}
+
+/// Repeat a 32×32 brick across a wall AABB. Partial edge tiles clip `src`.
+void draw_tiles_or_fill(midas::Renderer& renderer, midas::TextureId atlas, bool use_atlas,
+                        const midas::Rect& dest, const midas::Rect& src,
+                        const midas::Color& fill) {
+    if (!use_atlas) {
+        renderer.fill_rect(dest, fill);
+        return;
+    }
+    if (src.w <= 0.0f || src.h <= 0.0f || dest.w <= 0.0f || dest.h <= 0.0f) {
+        return;
+    }
+    for (float y = 0.0f; y < dest.h;) {
+        const float h = std::min(src.h, dest.h - y);
+        for (float x = 0.0f; x < dest.w;) {
+            const float w = std::min(src.w, dest.w - x);
+            renderer.draw_texture(atlas, midas::Rect{dest.x + x, dest.y + y, w, h},
+                                  midas::Rect{src.x, src.y, w, h});
+            x += w;
+        }
+        y += h;
+    }
 }
 
 midas::Vec2 wish_from_input(const midas::Input& input) {
@@ -359,27 +456,20 @@ int main(int argc, char** argv) {
 
         midas::Engine engine{std::move(config)};
         auto& renderer = engine.renderer();
-        const midas::TextureId atlas = make_actor_atlas(renderer);
-        if (!renderer.texture_valid(atlas) || renderer.texture_width(atlas) != kAtlasCell * 3 ||
-            renderer.texture_height(atlas) != kAtlasCell) {
-            throw std::runtime_error("Midas room: actor atlas upload failed");
-        }
+        const LoadedAtlas atlas = load_room_atlas(engine, argc > 0 ? argv[0] : nullptr,
+                                                  smoke_ticks > 0);
+        const bool use_atlas = atlas.from_bmp && renderer.texture_valid(atlas.id);
 
         midas::room::Room room = midas::room::Room::make();
         midas::Camera camera = renderer.camera();
         const bool show_hud = smoke_ticks == 0;
-        constexpr midas::Rect kPlayerCell{0.0f, 0.0f, static_cast<float>(kAtlasCell),
-                                          static_cast<float>(kAtlasCell)};
-        constexpr midas::Rect kKeyCell{static_cast<float>(kAtlasCell), 0.0f,
-                                       static_cast<float>(kAtlasCell),
-                                       static_cast<float>(kAtlasCell)};
-        constexpr midas::Rect kDoorCell{static_cast<float>(kAtlasCell * 2), 0.0f,
-                                        static_cast<float>(kAtlasCell),
-                                        static_cast<float>(kAtlasCell)};
 
         if (show_hud) {
             std::cerr << "Midas room: WASD move, avoid the red pit, get the key, walk through "
                          "the door. R restarts.\n";
+            if (use_atlas) {
+                std::cerr << "Midas room: drawing Jim's room_atlas.bmp cells\n";
+            }
         }
 
         const int status = engine.run(
@@ -403,18 +493,23 @@ int main(int argc, char** argv) {
                 renderer.fill_rect(midas::room::kFloor, {0.16f, 0.13f, 0.10f, 1.0f});
 
                 for (std::size_t i = 0; i < room.wall_count; ++i) {
-                    renderer.fill_rect(room.walls[i], midas::Color::bronze());
+                    draw_tiles_or_fill(renderer, atlas.id, use_atlas, room.walls[i], kWallCell,
+                                       midas::Color::bronze());
                 }
 
-                renderer.fill_rect(room.hazard, kHazardFill);
+                draw_sprite_or_fill(renderer, atlas.id, use_atlas, room.hazard, kPitCell,
+                                    kHazardFill);
 
-                const midas::Color door_tint =
-                    (room.has_key || room.won) ? midas::Color::gold() : midas::Color::bronze();
-                renderer.draw_texture(atlas, room.door, kDoorCell, door_tint);
+                const bool door_open = room.has_key || room.won;
+                draw_sprite_or_fill(renderer, atlas.id, use_atlas, room.door,
+                                    door_open ? kDoorOpenCell : kDoorShutCell,
+                                    door_open ? midas::Color::gold() : midas::Color::bronze());
                 if (!room.has_key) {
-                    renderer.draw_texture(atlas, room.key, kKeyCell);
+                    draw_sprite_or_fill(renderer, atlas.id, use_atlas, room.key, kKeyCell,
+                                        kKeyFill);
                 }
-                renderer.draw_texture(atlas, room.player, kPlayerCell);
+                draw_sprite_or_fill(renderer, atlas.id, use_atlas, room.player, kPlayerCell,
+                                    kPlayerFill);
 
                 if (show_hud) {
                     draw_hud(renderer, room);
@@ -429,7 +524,8 @@ int main(int argc, char** argv) {
 
         if (smoke_ticks > 0) {
             std::cerr << "Midas room: smoke completed " << smoke_ticks
-                      << " simulation ticks (aabb + room self-check ok)\n";
+                      << " simulation ticks (aabb + room self-check ok, "
+                      << (use_atlas ? "atlas loaded" : "solid-rect fallback") << ")\n";
         }
         return status;
     } catch (const std::exception& ex) {

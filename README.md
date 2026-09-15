@@ -13,6 +13,7 @@ engine/src/             Engine implementation (SDL3 kept private)
 apps/sandbox/           Tech gym: camera, sprites, entities, Esc/quit
 apps/sandbox/assets/    Demo BMP copied next to the sandbox binary
 apps/room/              v0 game: one room, WASD, key, door, hazard, restart
+apps/room/assets/       Jim's 192×32 room atlas BMP (copied next to midas_room)
 docs/                   Architecture, game v0 notes, macOS / Linux build
 CHANGELOG.md            Fine-tune pass highlights
 cmake/                  Homebrew / system SDL3 discovery, FetchContent fallback
@@ -75,7 +76,7 @@ v0 is one dungeon room. The sandbox stays the camera/atlas gym; this binary is t
 | **R** | Restart the room (also after a win or fail) |
 | **Esc** or close the window | Quit |
 
-Fixed room camera (identity logical view). Drawing is solid wall rects, a red hazard fill, plus a 3-cell `TextureId` atlas for player / key / door.
+Fixed room camera (identity logical view). Drawing is Jim's 192×32 BMP atlas (`room_atlas.bmp`, 32px cells: player / wall / key / door shut / door open / pit) via `TextureId` + source rects. Solid rects if that BMP is missing or load fails.
 
 Headless smoke (a few 60 Hz **simulation** ticks, then exit):
 
@@ -87,7 +88,7 @@ SDL_VIDEODRIVER=dummy ./build/debug/bin/midas_room --smoke
 
 Sandbox `--smoke` runs a header-only math self-check **before** SDL (clamp, Vec2 including `normalized_or_zero`, Color, Rect AABB / `aabb_overlap` / `aabb_move` / `expanded` / `contains_inclusive`, Camera including Inf zoom → 1, Transform, Entity, `TextureId`, Cooldown, CPU `make_checkerboard_rgba`, three-space mouse policy), then a few dummy-video **simulation** ticks (`EngineConfig::max_ticks` / `MIDAS_SMOKE_FRAMES` count `on_update` calls, not presents) that **require** `assets/midas_sprite.bmp` next to the binary (CMake copies it there; `cmake --install` places it beside the installed sandbox). A missing copy is an error in smoke mode even if a BMP exists in the source tree. In an interactive run a missing BMP logs where it looked and falls back to a generated checkerboard. The HUD is skipped in smoke so the dummy video driver does not need debug text, and the logical/window/pixel size line is skipped so smoke output stays deterministic. The SDL window→logical converter is interactive-only (`SDL_RenderCoordinatesFromWindow` needs a renderer).
 
-Room `--smoke` checks `aabb_overlap` / `aabb_move`, walks a scripted key→door win (without touching the hazard) and a walk-into-hazard fail/reset, then runs the same few dummy-video ticks (no BMP required). `ctest` runs both.
+Room `--smoke` checks `aabb_overlap` / `aabb_move`, walks a scripted key→door win (without touching the hazard) and a walk-into-hazard fail/reset, then runs the same few dummy-video ticks. CMake copies `assets/room_atlas.bmp` next to `midas_room`; if that copy is missing or `load_bmp` fails, the room draws solid rects instead of failing smoke. `ctest` runs both.
 
 See [docs/BUILDING.md](docs/BUILDING.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), and [docs/GAME_V0.md](docs/GAME_V0.md).
 
