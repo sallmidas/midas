@@ -11,7 +11,7 @@ Saul’s victory condition for this slice: **one room, player, walls, key, door,
 - One stationary hazard (a red AABB on the floor). It is a trigger, not a wall: overlap **fails**, motion freezes, and a fail overlay asks for **R**. The north-corridor key→door path still wins if you never touch it. Win and fail stamps are large screen-space rects (block letters), not just 8×8 debug text, and they stay until **R**.
 - **R** restarts (also after a win or fail). **Esc** / close box quits.
 - Camera is the identity logical view (no pan/zoom required).
-- Drawing: bronze wall fills, a red hazard fill, plus a 3-cell `TextureId` atlas (player / key / door). SDL stays out of public headers.
+- Drawing: Jim's 192×32 BMP atlas (`apps/room/assets/room_atlas.bmp`) via `TextureId` + source rects — player, wall brick, key, door shut, door open, pit. Solid fills if the BMP is missing or `load_bmp` fails. SDL stays out of public headers.
 
 ## Out of v0
 
