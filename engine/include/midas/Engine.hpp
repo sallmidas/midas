@@ -56,8 +56,8 @@ public:
     [[nodiscard]] Renderer& renderer() noexcept;
     [[nodiscard]] const Renderer& renderer() const noexcept;
 
-    /// Directory of the running executable (`SDL_GetBasePath`). Sandbox assets
-    /// copied next to the binary live in `executable_directory() / "assets"`.
+    /// Directory of the running executable (`SDL_GetBasePath`). Assets copied
+    /// next to the binary live in `executable_directory() / "assets"`.
     /// Empty if SDL cannot report a path.
     [[nodiscard]] std::filesystem::path executable_directory() const;
 

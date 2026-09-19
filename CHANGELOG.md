@@ -2,6 +2,12 @@
 
 Bullet highlights from the 2D engine fine-tunes on `main`. No 3D / ECS / editor.
 
+## Unreleased (room atlas)
+
+- `midas_room` loads Jim's 192×32 `apps/room/assets/room_atlas.bmp` (6×32px cells: player, wall, key, door shut, door open, pit) through existing `TextureId` + `draw_texture(..., src)`.
+- Locked vs open door uses cells 3 and 4. Walls tile the brick cell. Solid rects if the BMP is missing or `load_bmp` fails.
+- CMake copies the room atlas next to `midas_room` (`build/debug/bin/assets/`), same pattern as the sandbox BMP.
+
 ## Unreleased (room hazard)
 
 - `apps/room`: one stationary red AABB hazard. Overlap fails (freeze + overlay); **R** uses the existing restart path. The scripted north-corridor key→door path still wins if the pit is avoided.

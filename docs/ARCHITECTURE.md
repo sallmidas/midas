@@ -200,6 +200,8 @@ Textures use nearest-neighbor sampling (`SDL_SCALEMODE_NEAREST`) so pixel art st
 
 The sandbox locates `assets/midas_sprite.bmp` via `Engine::executable_directory()`, `argv[0]`, `./assets`, and the source tree `apps/sandbox/assets`. `--smoke` only accepts a BMP next to the binary (the CMake copy / install rule) and fails if that file is missing. An interactive run logs the search and falls back to a generated checkerboard. Separately, the sandbox generates a 64×32 two-cell atlas once (`create_texture`) and draws both cells with source rects.
 
+`midas_room` loads `assets/room_atlas.bmp` the same way (CMake copies `apps/room/assets/` next to the binary). It draws Jim's 6-cell sheet with `draw_texture(..., src)`. If the file is missing or `load_bmp` fails, the room falls back to solid rects — including during `--smoke`.
+
 ## Entities and AABB
 
 `Transform` is position + scale (no rotation). `parent.then(local)` composes a child in the parent's space — a scene-graph starter without storing parent pointers that can dangle.
