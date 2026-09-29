@@ -2,6 +2,13 @@
 
 Bullet highlights from the 2D engine fine-tunes on `main`. No 3D / ECS / editor.
 
+## Unreleased (room B)
+
+- `apps/room` only: Room B is a second box flush east of A's door. Key still unlocks A's door; overlapping that door is a passage, not a win.
+- Win is the exit AABB in B. WIN/FAIL stamps stay until **R**. **R** restores Room A spawn.
+- Camera snaps per room via existing `Camera::position` (`+ kRoomBSnapX` in B). No engine change.
+- `--smoke` / `ctest` cover key→door→B win and the pit fail/reset.
+
 ## Unreleased (room atlas)
 
 - `midas_room` loads Jim's 192×32 `apps/room/assets/room_atlas.bmp` (6×32px cells: player, wall, key, door shut, door open, pit) through existing `TextureId` + `draw_texture(..., src)`.
