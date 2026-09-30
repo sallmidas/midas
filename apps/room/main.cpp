@@ -22,6 +22,7 @@ constexpr int kSmokeTicks = 3;
 constexpr int kAtlasCell = 32;
 constexpr int kAtlasCols = 6;
 constexpr midas::Color kHazardFill{0.78f, 0.16f, 0.12f, 1.0f};
+constexpr midas::Color kMoverFill{0.95f, 0.32f, 0.08f, 1.0f};
 constexpr midas::Color kPlayerFill = midas::Color::gold();
 constexpr midas::Color kKeyFill{0.95f, 0.88f, 0.40f, 1.0f};
 
@@ -124,8 +125,32 @@ void self_check_room() {
                "Midas room self-check: spawn should not overlap the door");
         expect(!midas::aabb_overlap(room.player, room.hazard),
                "Midas room self-check: spawn should not overlap the hazard");
+        expect(!midas::aabb_overlap(room.player, room.mover.body),
+               "Midas room self-check: spawn should not overlap the mover");
+        expect(room.mover.velocity == midas::room::kMoverSpeed &&
+                   std::abs(room.mover.body.x - midas::room::kMoverMinX) < 0.001f &&
+                   std::abs(room.mover.body.y - midas::room::kMoverStart.y) < 0.001f,
+               "Midas room self-check: mover should start at the west bound, moving east");
         expect(!midas::aabb_overlap(room.player, room.goal),
                "Midas room self-check: spawn should not overlap the Room B goal");
+
+        // Swept track: left edge travels [min_x, max_x], body keeps its size.
+        const midas::Rect track{room.mover.min_x, room.mover.body.y,
+                                room.mover.max_x - room.mover.min_x + room.mover.body.w,
+                                room.mover.body.h};
+        expect(!midas::aabb_overlap(track, room.key) && !midas::aabb_overlap(track, room.door),
+               "Midas room self-check: mover track should not cover the key or the door");
+        expect(!midas::aabb_overlap(track, room.hazard) && !midas::aabb_overlap(track, room.goal),
+               "Midas room self-check: mover track should miss the pit and the Room B goal");
+        // Safe pass the scripted win uses: up the spawn column, east above the
+        // mover, then south on the east side into the door.
+        const midas::Rect spawn_column{200.0f, 96.0f, 40.0f, 528.0f};
+        const midas::Rect north_lane{176.0f, 110.0f, 948.0f, 40.0f};
+        const midas::Rect east_drop{860.0f, 110.0f, 280.0f, 320.0f};
+        expect(!midas::aabb_overlap(track, spawn_column) &&
+                   !midas::aabb_overlap(track, north_lane) &&
+                   !midas::aabb_overlap(track, east_drop),
+               "Midas room self-check: north corridor to the door should clear the mover");
     }
 
     {
@@ -192,8 +217,11 @@ void self_check_room() {
 
         room.tick({}, dt, true);
         expect(!room.won && !room.failed && !room.has_key && !room.in_room_b() &&
-                   std::abs(room.player.x - 200.0f) < 0.01f,
-               "Midas room self-check: R/restart should restore Room A spawn");
+                   std::abs(room.player.x - 200.0f) < 0.01f &&
+                   std::abs(room.player.y - 540.0f) < 0.01f &&
+                   std::abs(room.mover.body.x - midas::room::kMoverMinX) < 0.001f &&
+                   room.mover.velocity == midas::room::kMoverSpeed,
+               "Midas room self-check: R/restart should restore Room A spawn and the mover");
     }
 
     {
@@ -207,14 +235,113 @@ void self_check_room() {
                "Midas room self-check: fail pose should overlap the hazard");
 
         const float x_at_fail = room.player.x;
+        const float mover_x_at_fail = room.mover.body.x;
+        const float mover_v_at_fail = room.mover.velocity;
         room.tick({1.0f, 0.0f}, dt, false);
-        expect(std::abs(room.player.x - x_at_fail) < 0.01f,
-               "Midas room self-check: fail should freeze motion until restart");
+        expect(std::abs(room.player.x - x_at_fail) < 0.01f &&
+                   std::abs(room.mover.body.x - mover_x_at_fail) < 0.001f &&
+                   room.mover.velocity == mover_v_at_fail,
+               "Midas room self-check: fail should freeze player and mover until restart");
 
         room.tick({}, dt, true);
         expect(!room.failed && !room.won && !room.in_room_b() &&
-                   std::abs(room.player.x - 200.0f) < 0.01f,
-               "Midas room self-check: R/restart after fail should restore Room A spawn");
+                   std::abs(room.player.x - 200.0f) < 0.01f &&
+                   std::abs(room.player.y - 540.0f) < 0.01f &&
+                   std::abs(room.mover.body.x - midas::room::kMoverMinX) < 0.001f &&
+                   room.mover.velocity == midas::room::kMoverSpeed,
+               "Midas room self-check: R/restart after pit fail should restore spawn and mover");
+    }
+
+    {
+        Room room = Room::make();
+        const float x0 = room.mover.body.x;
+        const float v0 = room.mover.velocity;
+        bool hit_far = false;
+        for (int i = 0; i < 400 && !hit_far; ++i) {
+            room.tick({}, dt, false);
+            expect(room.mover.body.x + 0.001f >= room.mover.min_x &&
+                       room.mover.body.x <= room.mover.max_x + 0.001f,
+                   "Midas room self-check: mover should stay inside its bounds");
+            if (room.mover.velocity < 0.0f) {
+                hit_far = true;
+            }
+        }
+        expect(hit_far && std::abs(room.mover.body.x - room.mover.max_x) < 0.001f,
+               "Midas room self-check: mover should reverse at the east bound");
+
+        bool hit_near = false;
+        for (int i = 0; i < 400 && !hit_near; ++i) {
+            room.tick({}, dt, false);
+            if (room.mover.velocity > 0.0f) {
+                hit_near = true;
+            }
+        }
+        expect(hit_near && std::abs(room.mover.body.x - room.mover.min_x) < 0.001f,
+               "Midas room self-check: mover should reverse at the west bound");
+
+        Room other = Room::make();
+        Room again = Room::make();
+        for (int i = 0; i < 250; ++i) {
+            other.tick({}, dt, false);
+            again.tick({}, dt, false);
+        }
+        expect(other.mover.body.x == again.mover.body.x &&
+                   other.mover.velocity == again.mover.velocity,
+               "Midas room self-check: mover motion should match across two sims");
+
+        room.tick({}, dt, true);
+        expect(!room.failed && std::abs(room.player.x - 200.0f) < 0.01f &&
+                   std::abs(room.mover.body.x - x0) < 0.001f && room.mover.velocity == v0,
+               "Midas room self-check: R should restore mover position and direction");
+    }
+
+    {
+        Room room = Room::make();
+        // North into the mover's vertical span, still west of the track, then
+        // east until the body sits inside the swept span. Hold there until the
+        // slider comes back. Pillar top is y=250; staying at or above that
+        // keeps this lane from snagging the pillar (half-open edges).
+        for (int i = 0; i < 200 && room.player.y > room.mover.body.y; ++i) {
+            room.tick({0.0f, -1.0f}, dt, false);
+        }
+        expect(!room.failed && !room.player_overlaps_solid(),
+               "Midas room self-check: climbing to the mover lane should be safe");
+        expect(room.player.y < room.mover.body.y + room.mover.body.h &&
+                   room.player.y + room.player.h > room.mover.body.y &&
+                   room.player.x + room.player.w <= room.mover.min_x + 0.01f,
+               "Midas room self-check: mover approach should share Y and stay west");
+
+        for (int i = 0; i < 80 && !room.failed &&
+                        room.player.x < room.mover.min_x + 16.0f;
+             ++i) {
+            room.tick({1.0f, 0.0f}, dt, false);
+        }
+        for (int i = 0; i < 400 && !room.failed; ++i) {
+            room.tick({}, dt, false);
+        }
+        expect(room.failed && !room.won && midas::aabb_overlap(room.player, room.mover.body),
+               "Midas room self-check: standing in the mover track should fail");
+        expect(!midas::aabb_overlap(room.player, room.hazard),
+               "Midas room self-check: mover fail should not be the stationary pit");
+
+        const float x_at_fail = room.player.x;
+        const float y_at_fail = room.player.y;
+        const float mover_x_at_fail = room.mover.body.x;
+        const float mover_v_at_fail = room.mover.velocity;
+        room.tick({1.0f, 0.0f}, dt, false);
+        expect(std::abs(room.player.x - x_at_fail) < 0.01f &&
+                   std::abs(room.player.y - y_at_fail) < 0.01f &&
+                   std::abs(room.mover.body.x - mover_x_at_fail) < 0.001f &&
+                   room.mover.velocity == mover_v_at_fail,
+               "Midas room self-check: mover fail should freeze player and mover");
+
+        room.tick({}, dt, true);
+        expect(!room.failed && !room.won && !room.has_key && !room.in_room_b() &&
+                   std::abs(room.player.x - 200.0f) < 0.01f &&
+                   std::abs(room.player.y - 540.0f) < 0.01f &&
+                   std::abs(room.mover.body.x - midas::room::kMoverMinX) < 0.001f &&
+                   room.mover.velocity == midas::room::kMoverSpeed,
+               "Midas room self-check: R after mover fail should restore player and mover");
     }
 }
 
@@ -295,9 +422,10 @@ LoadedAtlas load_room_atlas(midas::Engine& engine, const char* argv0, bool smoke
 
 void draw_sprite_or_fill(midas::Renderer& renderer, midas::TextureId atlas, bool use_atlas,
                          const midas::Rect& dest, const midas::Rect& src,
-                         const midas::Color& fill) {
+                         const midas::Color& fill,
+                         const midas::Color& tint = midas::Color::white()) {
     if (use_atlas) {
-        renderer.draw_texture(atlas, dest, src);
+        renderer.draw_texture(atlas, dest, src, tint);
     } else {
         renderer.fill_rect(dest, fill);
     }
@@ -359,7 +487,7 @@ void draw_hud(midas::Renderer& renderer, const midas::room::Room& room) {
                                        : (room.has_key ? "Door: OPEN" : "Door: locked")));
     renderer.draw_debug_text({x, y + line_h}, status.str(), midas::Color::white());
     renderer.draw_debug_text({x, y + line_h * 2.0f},
-                             "Snap camera. Avoid the red pit. Key opens A. Exit in B wins.",
+                             "Avoid the pit and the orange slider. North lane to the key is safe.",
                              midas::Color::bronze());
 }
 
@@ -481,8 +609,9 @@ int main(int argc, char** argv) {
         const bool show_hud = smoke_ticks == 0;
 
         if (show_hud) {
-            std::cerr << "Midas room: WASD move, avoid the red pit, get the key, walk through "
-                         "the door into room B, overlap the exit to win. R restarts.\n";
+            std::cerr << "Midas room: WASD move, avoid the red pit and the orange slider in A, "
+                         "get the key, walk through the door into room B, overlap the exit to "
+                         "win. R restarts.\n";
             if (use_atlas) {
                 std::cerr << "Midas room: drawing Jim's room_atlas.bmp cells\n";
             }
@@ -520,6 +649,10 @@ int main(int argc, char** argv) {
 
                 draw_sprite_or_fill(renderer, atlas.id, use_atlas, room.hazard, kPitCell,
                                     kHazardFill);
+                // Wall cell tinted orange-red. The pit cell is already red, so a
+                // multiply tint would not separate it; the brick does.
+                draw_sprite_or_fill(renderer, atlas.id, use_atlas, room.mover.body, kWallCell,
+                                    kMoverFill, kMoverFill);
 
                 const bool door_open = room.has_key || room.won;
                 draw_sprite_or_fill(renderer, atlas.id, use_atlas, room.door,
@@ -547,7 +680,7 @@ int main(int argc, char** argv) {
 
         if (smoke_ticks > 0) {
             std::cerr << "Midas room: smoke completed " << smoke_ticks
-                      << " simulation ticks (aabb + A→B win + pit fail ok, "
+                      << " simulation ticks (aabb + A→B win + pit fail + mover fail ok, "
                       << (use_atlas ? "atlas loaded" : "solid-rect fallback") << ")\n";
         }
         return status;
